@@ -12,7 +12,14 @@
  * is the whole theming story — no palette, no hex, works in both themes.
  */
 
-import { createContext, useContext, useId, type ReactNode, type SVGProps } from "react";
+import {
+  createContext,
+  useContext,
+  useId,
+  type ReactNode,
+  type Ref,
+  type SVGProps,
+} from "react";
 import { cn } from "@/lib/utils";
 
 interface DrawingContextValue {
@@ -84,6 +91,11 @@ export interface DrawingProps {
    */
   role?: "img" | "group";
   className?: string;
+  /**
+   * The <svg> itself — a drawing with hit targets needs its rendered width to
+   * convert canvas units to CSS pixels.
+   */
+  ref?: Ref<SVGSVGElement>;
   children: ReactNode;
 }
 
@@ -94,6 +106,7 @@ export function Drawing({
   fontSize = 11,
   role = "img",
   className,
+  ref,
   children,
 }: DrawingProps) {
   // useId is SSR-stable; strip the framing characters so the id is safe in url(#…).
@@ -103,6 +116,7 @@ export function Drawing({
   return (
     <DrawingContext value={{ uid, fontSize }}>
       <svg
+        ref={ref}
         viewBox={viewBox}
         preserveAspectRatio="xMidYMid meet"
         role={role}
