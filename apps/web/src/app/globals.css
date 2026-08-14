@@ -256,3 +256,25 @@ html .katex {
     scroll-behavior: auto !important;
   }
 }
+/**
+ * Chart tooltips (`xy-chart.tsx`). The TanStack tooltip themes itself through
+ * these custom properties — overriding them here keeps its DOM untouched and
+ * puts the bubble on the app's own surface system: card background, the same
+ * hairline ring every panel wears, mono type in tabular figures. Both themes
+ * come along for free because the tokens themselves flip.
+ */
+:root {
+  --ts-chart-tooltip-background: var(--card);
+  --ts-chart-tooltip-color: var(--card-foreground);
+  --ts-chart-tooltip-border: 1px solid
+    color-mix(in oklab, var(--foreground) 12%, transparent);
+  --ts-chart-tooltip-border-radius: calc(var(--radius) - 4px);
+  --ts-chart-tooltip-shadow: 0 4px 16px rgb(0 0 0 / 0.12);
+  --ts-chart-tooltip-font: 400 0.6875rem/1.45 var(--font-mono, ui-monospace, monospace);
+  --ts-chart-tooltip-padding: 0.35rem 0.5rem;
+}
+
+.xy-chart-tooltip {
+  font-variant-numeric: tabular-nums;
+  white-space: pre-line;
+}

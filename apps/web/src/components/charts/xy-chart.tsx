@@ -16,9 +16,11 @@
  * dependency covers both.
  */
 
-import { defineChart, dot, lineY } from "@tanstack/charts";
+import { areaY, defineChart, dot, lineY, ruleX, ruleY } from "@tanstack/charts";
+import { decorative } from "@tanstack/charts/mark/decorative";
 import { Chart } from "@tanstack/charts/react";
 import { scaleLinear } from "@tanstack/charts/scales/linear";
+import { tooltip } from "@tanstack/charts/tooltip";
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 
@@ -56,6 +58,32 @@ export interface XyMarker<M = unknown> {
   meta?: M;
 }
 
+/**
+ * A reference line pinned to one axis value — a code limit, a demand level, a
+ * zero line. Drawn under the data, never focusable: a rule is context, not a
+ * datum, so the pointer passes straight through it to the curves.
+ */
+export interface XyRule {
+  axis: "x" | "y";
+  value: number;
+  token: ChartToken;
+  dashed?: boolean;
+  opacity?: number;
+}
+
+/**
+ * A shaded band between two y-values across x — the inside of a capacity
+ * surface, the headroom between demand and capacity. Fill only, no stroke, and
+ * like rules it is not focusable.
+ */
+export interface XyArea {
+  id: string;
+  points: readonly { x: number; y1: number; y2: number }[];
+  token: ChartToken;
+  /** fill opacity; defaults to 0.08 — context, not content */
+  opacity?: number;
+}
+
 export interface XyAxis {
   label: string;
   /** tick formatter; receives the raw domain value */
@@ -82,11 +110,29 @@ export interface XyChartProps<M = unknown> {
   ariaDescription?: string;
   series: readonly XySeries<M>[];
   markers?: readonly XyMarker<M>[];
+  /** reference lines, drawn under the data */
+  rules?: readonly XyRule[];
+  /** shaded bands, drawn under everything */
+  areas?: readonly XyArea[];
   x: XyAxis;
   y: XyAxis;
   height?: number;
   className?: string;
   onFocusChange?: (focus: XyFocus<M> | null) => void;
+  /**
+   * A cursor-anchored tooltip for the focused point. The formatter receives the
+   * same `XyFocus` the focus callback does, so a panel can share one readout
+   * function between its tooltip and its fixed line. Absent, no tooltip — the
+   * chart behaves exactly as before.
+   */
+  tooltip?: (focus: XyFocus<M>) => string;
+  /**
+   * How the pointer picks a focus point. `nearest` (default) is per-point;
+   * `nearest-x` snaps to the closest x regardless of y — right for reading a
+   * single curve; `group-x` focuses every series at one x — right for
+   * comparing series at a station.
+   */
+  focus?: "nearest" | "nearest-x" | "group-x";
 }
 
 // ---------------------------------------------------------------------------
@@ -172,16 +218,33 @@ function finite(point: { x: number; y: number }): boolean {
   return Number.isFinite(point.x) && Number.isFinite(point.y);
 }
 
+/** Row → the caller-facing focus shape; null for the invisible anchor rows. */
+function rowFocus<M>(row: Row | undefined): XyFocus<M> | null {
+  if (row === undefined || row.sourceId === "anchor") return null;
+  return {
+    kind: row.kind,
+    id: row.sourceId,
+    label: row.label,
+    x: row.x,
+    y: row.y,
+    meta: row.meta as M,
+  };
+}
+
 export function XyChart<M = unknown>({
   ariaLabel,
   ariaDescription,
   series,
   markers,
+  rules,
+  areas,
   x,
   y,
   height = 300,
   className,
   onFocusChange,
+  tooltip: tooltipFormat,
+  focus = "nearest",
 }: XyChartProps<M>) {
   const definition = useMemo(() => {
     const seriesRows = series.map((s) => ({
@@ -234,6 +297,34 @@ export function XyChart<M = unknown>({
     }
 
     const marks = [
+      // Bands first, rules second, data on top. `decorative()` strips the
+      // interaction geometry, so neither ever steals focus from a curve.
+      ...(areas ?? []).map((band) =>
+        decorative(
+          areaY(
+            band.points.filter((p) => finite({ x: p.x, y: p.y1 }) && Number.isFinite(p.y2)),
+            {
+              id: `area-${band.id}`,
+              x: "x",
+              y1: "y1",
+              y2: "y2",
+              fill: PALETTE[band.token],
+              fillOpacity: band.opacity ?? 0.08,
+            },
+          ),
+        ),
+      ),
+      ...(rules ?? []).map((rule, index) => {
+        const options = {
+          id: `rule-${index}`,
+          stroke: PALETTE[rule.token],
+          strokeOpacity: rule.opacity ?? 0.45,
+          ...(rule.dashed === true ? { strokeDasharray: "5 4" } : {}),
+        };
+        return decorative(
+          rule.axis === "y" ? ruleY([rule.value], options) : ruleX([rule.value], options),
+        );
+      }),
       ...seriesRows.map(({ series: s, rows }) =>
         lineY(rows, {
           id: s.id,
@@ -266,6 +357,22 @@ export function XyChart<M = unknown>({
 
     return defineChart({
       marks,
+      focus,
+      // The tooltip extension mounts only when a formatter is supplied, so
+      // charts without one ship no tooltip DOM at all.
+      ...(tooltipFormat === undefined
+        ? {}
+        : {
+            tooltip: {
+              use: tooltip,
+              className: "xy-chart-tooltip",
+              placement: ["top", "right", "left", "bottom"] as const,
+              format: (point: { datum: unknown }) => {
+                const focused = rowFocus<M>(point.datum as Row);
+                return focused === null ? "" : tooltipFormat(focused);
+              },
+            },
+          }),
       x: {
         scale: scaleLinear,
         nice: x.nice ?? true,
@@ -286,7 +393,7 @@ export function XyChart<M = unknown>({
       },
       theme: { foreground: PALETTE.line, muted: PALETTE.muted, grid: PALETTE.grid },
     });
-  }, [series, markers, x, y]);
+  }, [series, markers, rules, areas, x, y, tooltipFormat, focus]);
 
   return (
     /* Axis text inherits the container font: the mono class here is what puts
@@ -300,19 +407,9 @@ export function XyChart<M = unknown>({
         {...(ariaDescription === undefined ? {} : { ariaDescription })}
         onFocusChange={(point) => {
           if (onFocusChange === undefined) return;
-          const row = point?.datum;
-          if (row === undefined || row.sourceId === "anchor") {
-            onFocusChange(null);
-            return;
-          }
-          onFocusChange({
-            kind: row.kind,
-            id: row.sourceId,
-            label: row.label,
-            x: row.x,
-            y: row.y,
-            meta: row.meta as M,
-          });
+          // Decorative marks (areas, rules) can never be focused, but their
+          // datum types still reach this union — the cast reflects the runtime.
+          onFocusChange(rowFocus<M>(point?.datum as Row | undefined));
         }}
       />
     </div>

@@ -37,6 +37,14 @@ const DriftPanel = dynamic(() =>
   import("@/components/design/drift-panel").then((m) => m.DriftPanel),
 );
 
+const ShearPanel = dynamic(() =>
+  import("@/components/design/shear-panel").then((m) => m.ShearPanel),
+);
+
+const ShearSweep = dynamic(() =>
+  import("@/components/design/shear-sweep").then((m) => m.ShearSweep),
+);
+
 export interface ResultsPanelsProps {
   input: WallInput;
   report: WallReport;
@@ -64,6 +72,8 @@ export function ResultsPanels({ input, report, deferred }: ResultsPanelsProps) {
           condition is the panel's own first line, so the rendered result is
           unchanged. */}
       {chartInput.system === "special" ? <DriftPanel input={chartInput} /> : null}
+      <ShearPanel input={chartInput} report={chartReport} />
+      <ShearSweep input={chartInput} report={chartReport} />
       <UtilizationList report={report} />
       <TraceReport input={input} report={report} />
     </div>

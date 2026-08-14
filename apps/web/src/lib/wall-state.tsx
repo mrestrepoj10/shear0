@@ -274,6 +274,13 @@ export function runChecks(input: WallInput): WallResult {
 export type Selection =
   | { kind: "bar-station"; x: number }
   | { kind: "layer"; id: "vertical" | "horizontal" | "endZone" }
+  /**
+   * A point on the P–M interaction surface, published by the chart while the
+   * pointer traces the curve. `c` is the neutral-axis depth at that point —
+   * enough for the strain profile to reconstruct the whole slice via
+   * `sectionAt` without the chart and the drawing knowing each other.
+   */
+  | { kind: "pm-slice"; c: number }
   | null;
 
 const SelectionContext = createContext<Selection>(null);
