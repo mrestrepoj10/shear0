@@ -14,6 +14,9 @@
  */
 
 import katex from "katex";
+// KaTeX ships its twenty faces at `font-display: block` — up to three seconds
+// of invisible math. They are rewritten to `swap` on the way through the build;
+// see `postcss/katex-font-display.cjs` for why it has to happen there.
 import "katex/dist/katex.min.css";
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
