@@ -48,7 +48,7 @@ function DesignerLink({ item }: { item: LearnCase }) {
   return (
     <Link
       href={`/design?w=${encodeWallInput(item.input)}`}
-      className="inline-flex items-center gap-1.5 font-mono text-xs2 text-muted-foreground underline underline-offset-2 hover:text-foreground"
+      className="inline-flex items-center gap-1.5 font-mono text-xs2 text-muted-foreground underline underline-offset-2 transition-colors duration-150 hover:text-foreground"
     >
       open this example in the designer
       <span aria-hidden="true">→</span>
@@ -68,7 +68,7 @@ export default async function LearnTopicPage({ params }: PageProps<"/learn/[slug
     <article className="mx-auto max-w-5xl px-4 py-16">
       <Link
         href="/learn"
-        className="font-mono text-xs2 text-muted-foreground hover:text-foreground"
+        className="font-mono text-xs2 text-muted-foreground transition-colors duration-150 hover:text-foreground"
       >
         ← learn
       </Link>

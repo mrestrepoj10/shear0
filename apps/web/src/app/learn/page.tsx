@@ -42,7 +42,9 @@ export default function LearnPage() {
               <li key={topic.slug} className="min-w-0">
                 <Link
                   href={`/learn/${topic.slug}`}
-                  className="flex h-full min-w-0 flex-col gap-2 rounded-xl border border-border p-4 transition-colors hover:border-foreground/30 hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+                  // Same surface as `Card`: a ring, not a border of its own —
+                  // see `ui/card.tsx` and the plate in `wall-canvas.tsx`.
+                  className="flex h-full min-w-0 flex-col gap-2 rounded-xl bg-card p-4 ring-1 ring-foreground/10 transition-[color,background-color,box-shadow] duration-150 hover:bg-muted/40 hover:ring-foreground/30 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
                 >
                   <div className="flex min-w-0 items-baseline gap-2">
                     <span className="min-w-0 flex-1 text-sm">{topic.title}</span>
@@ -61,7 +63,10 @@ export default function LearnPage() {
       <p className="mt-10 max-w-prose font-mono text-xs2 text-muted-foreground">
         the walls behind these pages are MNL-17(21) Shear Wall Examples 1 and 2 — the same fixtures
         the engine&rsquo;s test suite asserts against. Every walkthrough links its wall into{" "}
-        <Link href="/design" className="underline underline-offset-2 hover:text-foreground">
+        <Link
+          href="/design"
+          className="underline underline-offset-2 transition-colors duration-150 hover:text-foreground"
+        >
           /design
         </Link>
         , where you can change it and watch the trace move.

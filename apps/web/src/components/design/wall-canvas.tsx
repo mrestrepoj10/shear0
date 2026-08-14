@@ -57,7 +57,12 @@ function Plate({
   className?: string;
 }) {
   return (
-    <figure className={cn("min-w-0 rounded-xl border border-border p-4", className)}>
+    /* One surface system: `Card`'s ring, not a border of its own. The two
+       treatments happened to look alike in light because `--border` and
+       `--foreground/10` land in the same place there; in dark a card sits at
+       oklch 0.205 and a bordered plate sat flat on 0.145, so two peer panels in
+       one column were visibly different objects. See `ui/card.tsx`. */
+    <figure className={cn("min-w-0 rounded-xl bg-card p-4 ring-1 ring-foreground/10", className)}>
       <figcaption className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 pb-3">
         <span className="font-mono text-xs2 tracking-tight text-foreground">{title}</span>
         {note === undefined ? null : (
