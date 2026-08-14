@@ -647,6 +647,11 @@ export function WallPlanSection({ input }: { input: WallInput }) {
       >
         {stations.map((st, i) => {
           const width = hitWidth(i);
+          // Same floor vertically: at phone widths a thin wall renders the web
+          // only ~14 CSS px tall, so the +16 canvas-unit bleed alone does not
+          // reach the 24 px minimum the width already guarantees.
+          const height = Math.max(H + 16, minHit);
+          const y = webTop - (height - H) / 2;
           return (
             <g
               key={`hit-${st.x}`}
@@ -670,9 +675,9 @@ export function WallPlanSection({ input }: { input: WallInput }) {
             >
               <rect
                 x={X(st.x) - width / 2}
-                y={webTop - 8}
+                y={y}
                 width={width}
-                height={H + 16}
+                height={height}
                 fill="transparent"
               />
               {active === i ? (

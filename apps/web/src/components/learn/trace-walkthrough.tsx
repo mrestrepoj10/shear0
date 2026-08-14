@@ -151,7 +151,9 @@ function NodeHead({ view }: { view: TraceView }) {
           {ROLE_LABEL[view.role]}
         </span>
       )}
-      {node.ref === undefined ? null : <RefBadge refer={node.ref} className="shrink-0" />}
+      {node.ref === undefined ? null : (
+        <RefBadge refer={node.ref} focusable={false} className="shrink-0" />
+      )}
       {node.status === "ng" || node.status === "warning" ? (
         <StatusBadge status={node.status} className="shrink-0" />
       ) : null}

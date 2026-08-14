@@ -90,14 +90,27 @@ export function StatusBadge({
  * so the citation is reachable without a pointer; the provider in `layout.tsx`
  * sets the delay once and opens adjacent badges instantly.
  */
-export function RefBadge({ refer, className }: { refer: CodeRef; className?: string }) {
+export function RefBadge({
+  refer,
+  className,
+  focusable = true,
+}: {
+  refer: CodeRef;
+  className?: string;
+  /**
+   * `false` when the badge sits inside an interactive ancestor (a link, a
+   * `<summary>`): a nested tab stop there conflicts with the enclosing
+   * control's activation, so the tooltip stays hover-only.
+   */
+  focusable?: boolean;
+}) {
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <Badge
             variant="outline"
-            tabIndex={0}
+            tabIndex={focusable ? 0 : undefined}
             // A code reference is an identifier, not prose: an auto-translator
             // will happily turn §18.10.6.4 into something that cites nothing.
             translate="no"

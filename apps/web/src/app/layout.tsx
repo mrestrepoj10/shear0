@@ -38,12 +38,13 @@ export const metadata: Metadata = {
   title: { default: "kern", template: "%s · kern" },
   description: DESCRIPTION,
   applicationName: "kern",
+  // No `url` or `title` here: child routes inherit this whole object, so a
+  // root-specific URL/title would make every shared /design or /learn link
+  // preview as the homepage. Each falls back to the page's own resolved value.
   openGraph: {
     type: "website",
     siteName: "kern",
-    title: "kern",
     description: DESCRIPTION,
-    url: "/",
   },
 };
 

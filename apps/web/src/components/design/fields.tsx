@@ -185,8 +185,15 @@ export function NumberField({
             if (Number.isFinite(parsed)) commit(onValueChange(parsed));
           }}
           onBlur={() => {
+            // A rejected entry stays on screen next to its error — clearing the
+            // draft here would show the previously accepted value outlined in
+            // red, with the value the message is about gone.
+            if (rejected) {
+              setInvalid(true);
+              return;
+            }
             setDraft(null);
-            setInvalid(rejected);
+            setInvalid(false);
           }}
           // A wheel tick over a focused number input silently increments it —
           // scrolling the 24-field panel would edit the design. Drop focus so the

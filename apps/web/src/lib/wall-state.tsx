@@ -214,7 +214,26 @@ export function wallReducer(state: WallInput, action: WallAction): WallInput {
     // order of the cases is the order the results read in. Idempotent — a
     // second undo (double-clicked toast, restored id already present) no-ops.
     case "restoreDemand": {
-      if (state.demands.some((d) => d.id === action.demand.id)) return state;
+      // Idempotent when the same case is already back (double-clicked toast) —
+      // but if the id was *reused* by a new case added since the delete, the
+      // restore must not be swallowed: bring the deleted values back under a
+      // fresh id instead.
+      const existing = state.demands.find((d) => d.id === action.demand.id);
+      if (existing !== undefined) {
+        if (
+          existing.Pu === action.demand.Pu &&
+          existing.Mu === action.demand.Mu &&
+          existing.Vu === action.demand.Vu &&
+          existing.label === action.demand.label
+        ) {
+          return state;
+        }
+        return wallReducer(state, {
+          type: "restoreDemand",
+          index: action.index,
+          demand: { ...action.demand, id: nextDemandId(state.demands) },
+        });
+      }
       const demands = [...state.demands];
       demands.splice(Math.min(Math.max(action.index, 0), demands.length), 0, action.demand);
       return { ...state, demands };
