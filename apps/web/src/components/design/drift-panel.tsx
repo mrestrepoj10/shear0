@@ -233,7 +233,6 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
   if (view === null) return null;
 
   if (view.path === "stress") {
-    const status = view.required ? "ng" : "ok";
     return (
       <Panel subtitle="ACI 318-19 §18.10.6.3 — stress-based path">
         <p className="sr-only">
@@ -251,7 +250,10 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
           <Readout label="0.2f'c" value={`${num(view.limit)} psi`} />
           <Readout label="0.15f'c — may discontinue below" value={`${num(view.discontinue)} psi`} />
         </div>
-        <p className={cn("font-mono text-[11px]", statusText(status))}>
+        {/* Neither branch is a failure: §18.10.6.3 either sends the wall to
+            special boundary elements or to 18.10.6.5, and both are valid
+            outcomes. Colouring "required" as ng said the wall was in trouble. */}
+        <p className="font-mono text-[11px] text-muted-foreground">
           {view.required
             ? "σ > 0.2f'c — special boundary elements required"
             : "σ ≤ 0.2f'c — 18.10.6.5 applies instead"}

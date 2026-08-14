@@ -55,7 +55,10 @@ function Workspace({ linkFailed }: { linkFailed: boolean }) {
 
       {report === null ? (
         <div className="sticky top-12 z-30 -mx-4 border-b border-border bg-background/85 px-4 py-2.5 backdrop-blur">
-          <span role="status" aria-live="polite" className="text-sm text-status-ng">
+          {/* `--destructive`, not `--status-ng`: the wall did not fail a check,
+              the app failed to check it. Reserving the status hue for check
+              outcomes keeps "ng" meaning one thing. */}
+          <span role="status" aria-live="polite" className="text-sm text-destructive">
             cannot evaluate this wall
           </span>
         </div>
@@ -71,7 +74,7 @@ function Workspace({ linkFailed }: { linkFailed: boolean }) {
         <section className="flex min-w-0 flex-col gap-3">
           {report === null || deferred === null ? (
             <div className="rounded-xl border border-border p-4">
-              <p className="text-sm text-status-ng">the engine could not run on these inputs</p>
+              <p className="text-sm text-destructive">the engine could not run on these inputs</p>
               <p className="mt-2 font-mono text-[11px] text-muted-foreground">{error}</p>
             </div>
           ) : (
