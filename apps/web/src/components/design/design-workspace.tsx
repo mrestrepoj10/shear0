@@ -6,6 +6,8 @@
  */
 
 import type { WallInput } from "@kern/engine";
+import { useEffect, useRef } from "react";
+import { notify } from "@/components/ui/sonner";
 import { InputsPanel } from "@/components/design/inputs-panel";
 import { ResultsPanels } from "@/components/design/results-panels";
 import { ResultsSummary, VerdictStrip } from "@/components/design/results-summary";
@@ -19,14 +21,30 @@ import {
   useWallResult,
 } from "@/lib/wall-state";
 
-function Workspace() {
+function Workspace({ linkFailed }: { linkFailed: boolean }) {
   const input = useWallInput();
   const dispatch = useWallDispatch();
   const { report, error } = useWallResult();
   // The drawings and the charts render from this one; everything else below
   // renders from `input`/`report` directly. See `useDeferredWallView`.
   const deferred = useDeferredWallView();
-  useWallUrlSync(input, dispatch);
+  useWallUrlSync(input, dispatch, { skipFirstWrite: linkFailed });
+
+  // Said once, on mount, and only for a `?w=` that would not decode at all —
+  // the codec's per-field fallbacks (a bad bar size, a missing v1 field) stay
+  // silent by design. The stable id makes a re-mount replace, not stack.
+  const announced = useRef(false);
+  useEffect(() => {
+    if (!linkFailed || announced.current) return;
+    announced.current = true;
+    notify({
+      id: "link-failed",
+      title: "that link couldn't be read",
+      description:
+        "the ?w= payload was invalid or from an incompatible version — loaded example 1 instead",
+      duration: 8000,
+    });
+  }, [linkFailed]);
 
   return (
     <div className="mx-auto max-w-7xl px-4 pb-16">
@@ -67,11 +85,20 @@ function Workspace() {
  * means a shared link renders its own design in the first HTML instead of
  * flashing the default example. The client hook still reads the URL, and finds
  * nothing to do.
+ *
+ * `linkFailed` is the other half: a `?w=` was asked for and could not be read,
+ * so this is *not* the shared design and the workspace has to say so.
  */
-export function DesignWorkspace({ initial }: { initial?: WallInput }) {
+export function DesignWorkspace({
+  initial,
+  linkFailed = false,
+}: {
+  initial?: WallInput;
+  linkFailed?: boolean;
+}) {
   return (
     <WallProvider {...(initial === undefined ? {} : { initial })}>
-      <Workspace />
+      <Workspace linkFailed={linkFailed} />
     </WallProvider>
   );
 }
