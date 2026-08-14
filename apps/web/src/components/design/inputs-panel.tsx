@@ -1,0 +1,919 @@
+"use client";
+
+/**
+ * The wall definition, grouped the way a designer thinks about it:
+ * geometry → materials → reinforcement → demands. Every edit dispatches into
+ * the reducer and the whole check set re-runs before the next paint.
+ */
+
+import {
+  Acv,
+  BARS,
+  Ec,
+  amplifiedShear,
+  beta1,
+  fmt,
+  hwOverLw,
+  totalVerticalAs,
+  type BarSize,
+  type Demands,
+  type DistributedLayer,
+  type SeismicParams,
+  type WallInput,
+} from "@kern/engine";
+import { Plus, RotateCcw, X } from "lucide-react";
+import type { ReactNode } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  DerivedRow,
+  FieldGroup,
+  FieldRow,
+  NumberField,
+  SelectField,
+  type SelectOption,
+} from "@/components/design/fields";
+import { encodeWallInput } from "@/lib/url-state";
+import {
+  BAR_SIZES,
+  PRESETS,
+  useWallDispatch,
+  useWallInput,
+  type PresetId,
+  type WallAction,
+} from "@/lib/wall-state";
+
+const BAR_OPTIONS: SelectOption<BarSize>[] = BAR_SIZES.map((size) => ({
+  value: size,
+  label: `#${size}`,
+}));
+
+const K_OPTIONS: SelectOption<"0.8" | "1" | "2">[] = [
+  { value: "0.8", label: "0.8 — restrained top & bottom" },
+  { value: "1", label: "1.0 — pinned" },
+  { value: "2", label: "2.0 — cantilever" },
+];
+
+const GRADE_OPTIONS: SelectOption<"60" | "80">[] = [
+  { value: "60", label: "Grade 60" },
+  { value: "80", label: "Grade 80" },
+];
+
+const WALL_TYPE_OPTIONS: SelectOption<"bearing" | "nonbearing">[] = [
+  { value: "bearing", label: "bearing" },
+  { value: "nonbearing", label: "nonbearing" },
+];
+
+const SDC_OPTIONS: SelectOption<SeismicParams["sdc"]>[] = (
+  ["A", "B", "C", "D", "E", "F"] as const
+).map((sdc) => ({ value: sdc, label: `SDC ${sdc}` }));
+
+const PHI_READING_OPTIONS: SelectOption<"handbook-conservative" | "exempt-18.10.4.6">[] = [
+  { value: "handbook-conservative", label: "21.2.4.1 applies" },
+  { value: "exempt-18.10.4.6", label: "18.10.4.6 exempts" },
+];
+
+const PRESET_ORDER: { id: PresetId; label: string }[] = [
+  { id: "example-1", label: "ex 1" },
+  { id: "example-2", label: "ex 2" },
+  { id: "blank", label: "blank" },
+];
+
+/** ρ = n_c·A_b/(s·h), the same expression the 11.6 check traces. */
+function rho(layer: DistributedLayer, h: number): number {
+  return (layer.curtains * BARS[layer.bar].Ab) / (layer.spacing * h);
+}
+
+function SectionCard({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <Card size="sm" className="gap-3">
+      <CardHeader>
+        <div className="flex min-h-7 items-center justify-between gap-2">
+          <CardTitle className="font-mono text-xs font-medium tracking-tight text-muted-foreground">
+            {title}
+          </CardTitle>
+          {action}
+        </div>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">{children}</CardContent>
+    </Card>
+  );
+}
+
+function GeometryCard({ input, dispatch }: PanelProps) {
+  const { geometry } = input;
+  const setLength = (field: "lw" | "h" | "hw" | "lu" | "cover") => (value: number | undefined) => {
+    if (value !== undefined) dispatch({ type: "setGeometry", field, value });
+  };
+
+  return (
+    <SectionCard title="geometry">
+      <FieldGroup>
+        <FieldRow label="wall length ℓw">
+          <NumberField
+            aria-label="wall length"
+            value={geometry.lw}
+            onValueChange={setLength("lw")}
+            unit="in"
+            min={1}
+          />
+        </FieldRow>
+        <FieldRow label="thickness h">
+          <NumberField
+            aria-label="wall thickness"
+            value={geometry.h}
+            onValueChange={setLength("h")}
+            unit="in"
+            min={1}
+          />
+        </FieldRow>
+        <FieldRow label="wall height hw">
+          <NumberField
+            aria-label="wall height"
+            value={geometry.hw}
+            onValueChange={setLength("hw")}
+            unit="in"
+            min={1}
+          />
+        </FieldRow>
+        <FieldRow label="unsupported height ℓu">
+          <NumberField
+            aria-label="unsupported height"
+            value={geometry.lu}
+            onValueChange={setLength("lu")}
+            unit="in"
+            min={1}
+          />
+        </FieldRow>
+        <FieldRow label="clear cover">
+          <NumberField
+            aria-label="clear cover"
+            value={geometry.cover}
+            onValueChange={setLength("cover")}
+            unit="in"
+            min={0}
+            step={0.25}
+          />
+        </FieldRow>
+        <FieldRow label="effective length factor k" hint="11.5.3.1">
+          <SelectField
+            aria-label="effective length factor"
+            value={geometry.k === 0.8 ? "0.8" : geometry.k === 2 ? "2" : "1"}
+            options={K_OPTIONS}
+            onValueChange={(value) =>
+              dispatch({ type: "setK", value: value === "0.8" ? 0.8 : value === "2" ? 2.0 : 1.0 })
+            }
+          />
+        </FieldRow>
+        <FieldRow label="wall type" hint="Table 11.3.1.1">
+          <SelectField
+            aria-label="wall type"
+            value={input.wallType}
+            options={WALL_TYPE_OPTIONS}
+            onValueChange={(value) => dispatch({ type: "setWallType", value })}
+          />
+        </FieldRow>
+      </FieldGroup>
+      <div className="mt-1 flex flex-col gap-1 border-t border-border pt-2">
+        <DerivedRow label="hw/ℓw" value={fmt(hwOverLw(input).value, { dp: 3 })} />
+        <DerivedRow label="Acv" value={`${fmt(Acv(input).value)} in²`} />
+      </div>
+    </SectionCard>
+  );
+}
+
+function MaterialsCard({ input, dispatch }: PanelProps) {
+  const fcPsi = input.concrete.fc * 1000;
+  return (
+    <SectionCard title="materials">
+      <FieldGroup>
+        <FieldRow label="concrete f'c">
+          <NumberField
+            aria-label="concrete compressive strength"
+            value={fcPsi}
+            onValueChange={(value) => {
+              if (value !== undefined && value > 0) {
+                dispatch({ type: "setConcrete", patch: { fcPsi: value } });
+              }
+            }}
+            unit="psi"
+            min={1}
+            step={500}
+          />
+        </FieldRow>
+        <FieldRow label="lightweight factor λ" hint="19.2.4">
+          <NumberField
+            aria-label="lightweight modification factor"
+            value={input.concrete.lambda}
+            onValueChange={(value) => {
+              if (value !== undefined && value > 0) {
+                dispatch({ type: "setConcrete", patch: { lambda: value } });
+              }
+            }}
+            min={0.75}
+            step={0.05}
+          />
+        </FieldRow>
+        <FieldRow label="reinforcement grade" hint="20.2.2">
+          <SelectField
+            aria-label="reinforcement grade"
+            value={input.grade.fy === 80 ? "80" : "60"}
+            options={GRADE_OPTIONS}
+            onValueChange={(value) => dispatch({ type: "setGrade", fy: value === "80" ? 80 : 60 })}
+          />
+        </FieldRow>
+      </FieldGroup>
+      <div className="mt-1 flex flex-col gap-1 border-t border-border pt-2">
+        <DerivedRow label="β₁" value={fmt(beta1(input.concrete).value, { dp: 3 })} />
+        <DerivedRow label="Ec" value={`${fmt(Ec(input.concrete).value)} psi`} />
+        <DerivedRow label="fy" value={`${fmt(input.grade.fy)} ksi`} />
+      </div>
+    </SectionCard>
+  );
+}
+
+function ReinforcementCard({ input, dispatch }: PanelProps) {
+  const { endZone } = input;
+  const curtains = Math.min(input.vertical.curtains, input.horizontal.curtains);
+
+  return (
+    <SectionCard
+      title="reinforcement"
+      action={
+        <ToggleGroup
+          value={[String(curtains)]}
+          onValueChange={(value: string[]) => {
+            const next = value[0];
+            if (next === undefined) return;
+            dispatch({
+              type: "setLayer",
+              layer: "both",
+              patch: { curtains: next === "1" ? 1 : 2 },
+            });
+          }}
+          variant="outline"
+          size="sm"
+          spacing={0}
+          aria-label="curtains of reinforcement"
+        >
+          <ToggleGroupItem value="1" size="sm" variant="outline" className="font-mono text-[11px]">
+            1 curtain
+          </ToggleGroupItem>
+          <ToggleGroupItem value="2" size="sm" variant="outline" className="font-mono text-[11px]">
+            2 curtains
+          </ToggleGroupItem>
+        </ToggleGroup>
+      }
+    >
+      <FieldGroup>
+        <FieldRow label="vertical bar" hint="ρℓ, longitudinal">
+          <SelectField
+            aria-label="vertical bar size"
+            value={input.vertical.bar}
+            options={BAR_OPTIONS}
+            onValueChange={(bar) => dispatch({ type: "setLayer", layer: "vertical", patch: { bar } })}
+          />
+        </FieldRow>
+        <FieldRow label="vertical spacing">
+          <NumberField
+            aria-label="vertical bar spacing"
+            value={input.vertical.spacing}
+            onValueChange={(value) => {
+              if (value !== undefined && value > 0) {
+                dispatch({ type: "setLayer", layer: "vertical", patch: { spacing: value } });
+              }
+            }}
+            unit="in"
+            min={1}
+          />
+        </FieldRow>
+        <FieldRow label="horizontal bar" hint="ρt, transverse">
+          <SelectField
+            aria-label="horizontal bar size"
+            value={input.horizontal.bar}
+            options={BAR_OPTIONS}
+            onValueChange={(bar) =>
+              dispatch({ type: "setLayer", layer: "horizontal", patch: { bar } })
+            }
+          />
+        </FieldRow>
+        <FieldRow label="horizontal spacing">
+          <NumberField
+            aria-label="horizontal bar spacing"
+            value={input.horizontal.spacing}
+            onValueChange={(value) => {
+              if (value !== undefined && value > 0) {
+                dispatch({ type: "setLayer", layer: "horizontal", patch: { spacing: value } });
+              }
+            }}
+            unit="in"
+            min={1}
+          />
+        </FieldRow>
+      </FieldGroup>
+
+      <div className="mt-1 flex items-center justify-between border-t border-border pt-2">
+        <span className="font-mono text-[11px] text-muted-foreground">end-zone bars</span>
+        <Button
+          size="xs"
+          variant="ghost"
+          onClick={() =>
+            dispatch({
+              type: "setEndZone",
+              patch: endZone === undefined ? {} : null,
+            })
+          }
+        >
+          {endZone === undefined ? "add" : "remove"}
+        </Button>
+      </div>
+
+      {endZone === undefined ? null : (
+        <FieldGroup>
+          <FieldRow label="end-zone bar">
+            <SelectField
+              aria-label="end-zone bar size"
+              value={endZone.bar}
+              options={BAR_OPTIONS}
+              onValueChange={(bar) => dispatch({ type: "setEndZone", patch: { bar } })}
+            />
+          </FieldRow>
+          <FieldRow label="bars per end" hint="all curtains">
+            <NumberField
+              aria-label="end-zone bar count"
+              value={endZone.count}
+              onValueChange={(value) => {
+                if (value !== undefined) dispatch({ type: "setEndZone", patch: { count: value } });
+              }}
+              min={0}
+              step={1}
+            />
+          </FieldRow>
+          <FieldRow label="end to first bar">
+            <NumberField
+              aria-label="distance to first end-zone bar"
+              value={endZone.distanceToFirst}
+              onValueChange={(value) => {
+                if (value !== undefined) {
+                  dispatch({ type: "setEndZone", patch: { distanceToFirst: value } });
+                }
+              }}
+              unit="in"
+              min={0}
+            />
+          </FieldRow>
+          <FieldRow label="end-zone spacing">
+            <NumberField
+              aria-label="end-zone bar spacing"
+              value={endZone.spacing}
+              onValueChange={(value) => {
+                if (value !== undefined && value > 0) {
+                  dispatch({ type: "setEndZone", patch: { spacing: value } });
+                }
+              }}
+              unit="in"
+              min={1}
+            />
+          </FieldRow>
+        </FieldGroup>
+      )}
+
+      <div className="mt-1 flex flex-col gap-1 border-t border-border pt-2">
+        <DerivedRow label="ρℓ provided" value={fmt(rho(input.vertical, input.geometry.h))} />
+        <DerivedRow label="ρt provided" value={fmt(rho(input.horizontal, input.geometry.h))} />
+        <DerivedRow label="Ast total (vertical)" value={`${fmt(totalVerticalAs(input))} in²`} />
+      </div>
+    </SectionCard>
+  );
+}
+
+/**
+ * Ω_v, ω_v and V_e for the combination that produces the largest design shear —
+ * the three numbers a designer wants on screen *while* typing story counts and
+ * heights, not three panels away. Straight off `amplifiedShear`, which the
+ * 18.10.4 check consumes; a combination whose P_u the section cannot equilibrate
+ * is skipped rather than crashing the panel.
+ */
+function seismicPreview(input: WallInput) {
+  let best: { OmegaV: number; omegaV: number; Ve: number; label: string } | null = null;
+  for (const demand of input.demands) {
+    try {
+      const ve = amplifiedShear(input, demand);
+      if (best === null || ve.Ve.value > best.Ve) {
+        best = {
+          OmegaV: ve.OmegaV.value,
+          omegaV: ve.omegaV.value,
+          Ve: ve.Ve.value,
+          label: demand.label ?? demand.id,
+        };
+      }
+    } catch {
+      // no neutral axis for this P_u — the flexure check reports it properly
+    }
+  }
+  return best;
+}
+
+/**
+ * Which check set runs, and everything §18.10 needs to run it: the ASCE 7
+ * displacement quantities behind 18.10.6.2(a), the story count behind ω_v, and
+ * the 21.2.4.1 reading the engine exposes as a setting.
+ */
+function SystemCard({ input, dispatch }: PanelProps) {
+  const special = input.system === "special";
+  const seismic = input.seismic;
+  const preview = special ? seismicPreview(input) : null;
+  const setSeismic =
+    (field: "deltaE" | "Cd" | "ns" | "hsx") => (value: number | undefined) => {
+      dispatch({ type: "setSeismic", patch: { [field]: value } });
+    };
+
+  return (
+    <SectionCard
+      title="system"
+      action={
+        <ToggleGroup
+          value={[input.system]}
+          onValueChange={(value: string[]) => {
+            const next = value[0];
+            if (next !== "ordinary" && next !== "special") return;
+            dispatch({ type: "setSystem", value: next });
+          }}
+          variant="outline"
+          size="sm"
+          spacing={0}
+          aria-label="structural system"
+        >
+          <ToggleGroupItem
+            value="ordinary"
+            size="sm"
+            variant="outline"
+            className="font-mono text-[11px]"
+          >
+            ordinary
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            value="special"
+            size="sm"
+            variant="outline"
+            className="font-mono text-[11px]"
+          >
+            special
+          </ToggleGroupItem>
+        </ToggleGroup>
+      }
+    >
+      <p className="text-[11px] text-muted-foreground">
+        {special
+          ? "chapter 11 plus §18.10: Ve amplification, seismic web reinforcement, boundary elements."
+          : "chapter 11 only — cast-in-place wall, no seismic detailing."}
+      </p>
+
+      {!special ? null : (
+        <>
+          <FieldGroup>
+            <FieldRow label="seismic design category" hint="18.2.1">
+              <SelectField
+                aria-label="seismic design category"
+                value={seismic?.sdc ?? "D"}
+                options={SDC_OPTIONS}
+                onValueChange={(sdc) => dispatch({ type: "setSeismic", patch: { sdc } })}
+              />
+            </FieldRow>
+            <FieldRow label="elastic deflection δe" hint="top of wall">
+              <NumberField
+                aria-label="elastic deflection at the top of the wall"
+                value={seismic?.deltaE}
+                onValueChange={setSeismic("deltaE")}
+                optional
+                unit="in"
+                min={0}
+                step={0.1}
+              />
+            </FieldRow>
+            <FieldRow label="deflection amplification Cd" hint="ASCE 7">
+              <NumberField
+                aria-label="deflection amplification factor"
+                value={seismic?.Cd}
+                onValueChange={setSeismic("Cd")}
+                optional
+                min={0}
+                step={0.5}
+              />
+            </FieldRow>
+            <FieldRow label="stories ns" hint="above the critical section">
+              <NumberField
+                aria-label="stories above the critical section"
+                value={seismic?.ns}
+                onValueChange={setSeismic("ns")}
+                optional
+                min={0}
+                step={1}
+              />
+            </FieldRow>
+            <FieldRow label="story height hsx" hint="first story, 21.2.4.1">
+              <NumberField
+                aria-label="first story height"
+                value={seismic?.hsx}
+                onValueChange={setSeismic("hsx")}
+                optional
+                unit="in"
+                min={0}
+              />
+            </FieldRow>
+            <FieldRow label="height above crit. section hwcs" hint="18.10.3.1 — blank = hw">
+              <NumberField
+                aria-label="height above the critical section"
+                value={input.geometry.hwcs}
+                onValueChange={(value) =>
+                  dispatch({ type: "setGeometry", field: "hwcs", value })
+                }
+                optional
+                unit="in"
+                min={0}
+              />
+            </FieldRow>
+            <FieldRow label="unsupported height hu" hint="18.10.6.4(b) — blank = ℓu">
+              <NumberField
+                aria-label="laterally unsupported height at the extreme compression fiber"
+                value={input.geometry.hu}
+                onValueChange={(value) => dispatch({ type: "setGeometry", field: "hu", value })}
+                optional
+                unit="in"
+                min={0}
+              />
+            </FieldRow>
+            <FieldRow label="φ for seismic shear" hint="21.2.4.1 / 18.10.4.6">
+              <SelectField
+                aria-label="reading of 21.2.4.1 for the seismic shear phi"
+                value={input.phiSeismicReading ?? "handbook-conservative"}
+                options={PHI_READING_OPTIONS}
+                onValueChange={(value) => dispatch({ type: "setPhiReading", value })}
+              />
+            </FieldRow>
+          </FieldGroup>
+          <p className="text-[11px] text-muted-foreground">
+            {(input.phiSeismicReading ?? "handbook-conservative") === "handbook-conservative"
+              ? "φ drops to 0.60 when Vn < the shear at Mn, as MNL-17 Ex. 2 does even on the 18.10.6.2 path."
+              : "18.10.4.6 read literally: walls designed by 18.10.6.2 keep φ = 0.75."}
+          </p>
+
+          <div className="mt-1 flex flex-col gap-1 border-t border-border pt-2">
+            {preview === null ? (
+              <DerivedRow label="Ve" value="—" />
+            ) : (
+              <>
+                <DerivedRow label="Ωv" value={fmt(preview.OmegaV, { dp: 2 })} />
+                <DerivedRow label="ωv" value={fmt(preview.omegaV, { dp: 3 })} />
+                <DerivedRow
+                  label={`Ve · ${preview.label}`}
+                  value={`${fmt(preview.Ve)} kip`}
+                />
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </SectionCard>
+  );
+}
+
+/**
+ * The **provided** special boundary element (18.10.6.4). The engine never sizes
+ * one — it verifies what is drawn here, so every field is a detailing decision
+ * and "none provided" is a legitimate state (and an ng if 18.10.6.2(a) fires).
+ */
+function BoundaryElementCard({ input, dispatch }: PanelProps) {
+  const sbe = input.sbe;
+  const cover = input.geometry.cover;
+
+  return (
+    <SectionCard
+      title="boundary element"
+      action={
+        <Button
+          size="xs"
+          variant="ghost"
+          onClick={() => dispatch({ type: "setSbe", patch: sbe === undefined ? {} : null })}
+        >
+          {sbe === undefined ? "add" : "remove"}
+        </Button>
+      }
+    >
+      {sbe === undefined ? (
+        <p className="text-[11px] text-muted-foreground">
+          none provided — if 18.10.6.2(a) requires one, the detailing check reports ng.
+        </p>
+      ) : (
+        <>
+          <FieldGroup>
+            <FieldRow label="width b" hint="wall-thickness direction">
+              <NumberField
+                aria-label="boundary element width"
+                value={sbe.width}
+                onValueChange={(value) => {
+                  if (value !== undefined && value > 0) {
+                    dispatch({ type: "setSbe", patch: { width: value } });
+                  }
+                }}
+                unit="in"
+                min={1}
+              />
+            </FieldRow>
+            <FieldRow label="length ℓbe" hint="from the compression fiber">
+              <NumberField
+                aria-label="boundary element length"
+                value={sbe.length}
+                onValueChange={(value) => {
+                  if (value !== undefined && value > 0) {
+                    dispatch({ type: "setSbe", patch: { length: value } });
+                  }
+                }}
+                unit="in"
+                min={1}
+              />
+            </FieldRow>
+            <FieldRow label="longitudinal bar">
+              <SelectField
+                aria-label="boundary element longitudinal bar size"
+                value={sbe.longBar}
+                options={BAR_OPTIONS}
+                onValueChange={(longBar) => dispatch({ type: "setSbe", patch: { longBar } })}
+              />
+            </FieldRow>
+            <FieldRow label="bars per element" hint="all faces">
+              <NumberField
+                aria-label="boundary element longitudinal bar count"
+                value={sbe.longCount}
+                onValueChange={(value) => {
+                  if (value !== undefined && value >= 0) {
+                    dispatch({ type: "setSbe", patch: { longCount: value } });
+                  }
+                }}
+                min={0}
+                step={1}
+              />
+            </FieldRow>
+            <FieldRow label="bar spacing hx" hint="18.10.6.4(f)">
+              <NumberField
+                aria-label="spacing of laterally supported longitudinal bars"
+                value={sbe.hx}
+                onValueChange={(value) => {
+                  if (value !== undefined && value > 0) {
+                    dispatch({ type: "setSbe", patch: { hx: value } });
+                  }
+                }}
+                unit="in"
+                min={1}
+              />
+            </FieldRow>
+            <FieldRow label="hoop / tie bar">
+              <SelectField
+                aria-label="boundary element tie bar size"
+                value={sbe.tieBar}
+                options={BAR_OPTIONS}
+                onValueChange={(tieBar) => dispatch({ type: "setSbe", patch: { tieBar } })}
+              />
+            </FieldRow>
+            <FieldRow label="tie spacing s" hint="18.10.6.4(e)">
+              <NumberField
+                aria-label="boundary element tie spacing"
+                value={sbe.tieSpacing}
+                onValueChange={(value) => {
+                  if (value !== undefined && value > 0) {
+                    dispatch({ type: "setSbe", patch: { tieSpacing: value } });
+                  }
+                }}
+                unit="in"
+                min={0.5}
+                step={0.5}
+              />
+            </FieldRow>
+            <FieldRow label="tie legs across b" hint="⊥ bc1, Table 18.10.6.4(g)">
+              <NumberField
+                aria-label="tie legs across the boundary element width"
+                value={sbe.tieLegsAcrossWidth}
+                onValueChange={(value) => {
+                  if (value !== undefined && value >= 0) {
+                    dispatch({ type: "setSbe", patch: { tieLegsAcrossWidth: value } });
+                  }
+                }}
+                min={0}
+                step={1}
+              />
+            </FieldRow>
+          </FieldGroup>
+
+          <div className="mt-1 flex flex-col gap-1 border-t border-border pt-2">
+            <DerivedRow label="Ag,be = b·ℓbe" value={`${fmt(sbe.width * sbe.length)} in²`} />
+            <DerivedRow
+              label="Ach (core, to hoop outside)"
+              value={`${fmt(Math.max(0, sbe.width - 2 * cover) * Math.max(0, sbe.length - 2 * cover))} in²`}
+            />
+            <DerivedRow
+              label="Ash across bc1"
+              value={`${fmt(sbe.tieLegsAcrossWidth * BARS[sbe.tieBar].Ab, { dp: 2 })} in²`}
+            />
+          </div>
+        </>
+      )}
+    </SectionCard>
+  );
+}
+
+function DemandCard({
+  demand,
+  index,
+  removable,
+  dispatch,
+}: {
+  demand: Demands;
+  index: number;
+  removable: boolean;
+  dispatch: (action: WallAction) => void;
+}) {
+  const patch =
+    (key: "Pu" | "Mu" | "Vu" | "MuOut" | "VuOut", optional = false) =>
+    (value: number | undefined) => {
+      if (value === undefined && !optional) return;
+      const next: Partial<Omit<Demands, "id">> =
+        key === "Pu"
+          ? { Pu: value ?? 0 }
+          : key === "Mu"
+            ? { Mu: value ?? 0 }
+            : key === "Vu"
+              ? { Vu: value ?? 0 }
+              : key === "MuOut"
+                ? { MuOut: value }
+                : { VuOut: value };
+      dispatch({ type: "setDemand", id: demand.id, patch: next });
+    };
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-border p-2.5">
+      <div className="flex items-center gap-2">
+        <input
+          aria-label={`label for load case ${index + 1}`}
+          value={demand.label ?? ""}
+          placeholder={demand.id}
+          onChange={(event) =>
+            dispatch({ type: "setDemand", id: demand.id, patch: { label: event.target.value } })
+          }
+          className="h-6 min-w-0 flex-1 rounded-sm bg-transparent px-1 font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground focus-visible:bg-muted"
+        />
+        {removable ? (
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            aria-label={`remove load case ${demand.label ?? demand.id}`}
+            onClick={() => dispatch({ type: "removeDemand", id: demand.id })}
+          >
+            <X />
+          </Button>
+        ) : null}
+      </div>
+      <FieldGroup>
+        <FieldRow label="Pu" hint="compression +">
+          <NumberField
+            aria-label={`Pu for ${demand.label ?? demand.id}`}
+            value={demand.Pu}
+            onValueChange={patch("Pu")}
+            unit="kip"
+          />
+        </FieldRow>
+        <FieldRow label="Mu" hint="in-plane">
+          <NumberField
+            aria-label={`Mu for ${demand.label ?? demand.id}`}
+            value={demand.Mu}
+            onValueChange={patch("Mu")}
+            unit="kip-ft"
+          />
+        </FieldRow>
+        <FieldRow label="Vu" hint="in-plane">
+          <NumberField
+            aria-label={`Vu for ${demand.label ?? demand.id}`}
+            value={demand.Vu}
+            onValueChange={patch("Vu")}
+            unit="kip"
+          />
+        </FieldRow>
+        <FieldRow label="Mu,oop" hint="optional">
+          <NumberField
+            aria-label={`out-of-plane Mu for ${demand.label ?? demand.id}`}
+            value={demand.MuOut}
+            onValueChange={patch("MuOut", true)}
+            optional
+            unit="kip-ft"
+          />
+        </FieldRow>
+        <FieldRow label="Vu,oop" hint="optional">
+          <NumberField
+            aria-label={`out-of-plane Vu for ${demand.label ?? demand.id}`}
+            value={demand.VuOut}
+            onValueChange={patch("VuOut", true)}
+            optional
+            unit="kip"
+          />
+        </FieldRow>
+      </FieldGroup>
+    </div>
+  );
+}
+
+interface PanelProps {
+  input: WallInput;
+  dispatch: (action: WallAction) => void;
+}
+
+/** Which preset the current wall still *is*, by the same bytes the URL carries. */
+function activePreset(input: WallInput): PresetId | null {
+  const encoded = encodeWallInput(input);
+  for (const { id } of PRESET_ORDER) {
+    if (encodeWallInput(PRESETS[id]) === encoded) return id;
+  }
+  return null;
+}
+
+export function InputsPanel() {
+  const input = useWallInput();
+  const dispatch = useWallDispatch();
+  const active = activePreset(input);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-mono text-xs tracking-tight text-muted-foreground">wall</h2>
+        <div className="flex items-center gap-2">
+          <ToggleGroup
+            value={active === null ? [] : [active]}
+            onValueChange={(value: string[]) => {
+              const next = value[0];
+              if (next === undefined) return;
+              const preset = PRESETS[next as PresetId];
+              if (preset !== undefined) dispatch({ type: "loadPreset", input: preset });
+            }}
+            variant="outline"
+            size="sm"
+            spacing={0}
+            aria-label="starting point"
+          >
+            {PRESET_ORDER.map(({ id, label }) => (
+              <ToggleGroupItem
+                key={id}
+                value={id}
+                size="sm"
+                variant="outline"
+                className="font-mono text-[11px]"
+              >
+                {label}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          <Button size="xs" variant="ghost" onClick={() => dispatch({ type: "reset" })}>
+            <RotateCcw />
+            reset
+          </Button>
+        </div>
+      </div>
+
+      <GeometryCard input={input} dispatch={dispatch} />
+      <MaterialsCard input={input} dispatch={dispatch} />
+      <SystemCard input={input} dispatch={dispatch} />
+      <ReinforcementCard input={input} dispatch={dispatch} />
+      {input.system === "special" ? (
+        <BoundaryElementCard input={input} dispatch={dispatch} />
+      ) : null}
+
+      <SectionCard
+        title="demands"
+        action={
+          <Button size="xs" variant="ghost" onClick={() => dispatch({ type: "addDemand" })}>
+            <Plus />
+            load case
+          </Button>
+        }
+      >
+        <div className="flex flex-col gap-2">
+          {input.demands.map((demand, index) => (
+            <DemandCard
+              key={demand.id}
+              demand={demand}
+              index={index}
+              removable={input.demands.length > 1}
+              dispatch={dispatch}
+            />
+          ))}
+        </div>
+      </SectionCard>
+    </div>
+  );
+}
