@@ -148,6 +148,48 @@ html .katex {
 }
 
 /**
+ * Deferred rendering for the learn walkthroughs.
+ *
+ * `/learn/sbe-detailing` is 11,971 elements — 192 KaTeX instances, every
+ * `<details>` server-rendered `open`, because the whole derivation *is* the
+ * page. The HTML is cheap (48.6 KB gz); the style and layout passes over that
+ * tree are not, and the reader can see one screen of it.
+ *
+ * `content-visibility: auto` is the exact tool: the box keeps its place in the
+ * document — same DOM, same node count, still findable, still printable, still
+ * reachable by anchor and by find-in-page, which is what the `<details open>`
+ * decision was for — but the engine skips styling and laying out its subtree
+ * until it comes near the viewport, and re-skips it when it leaves. The
+ * `contain-intrinsic-size` is the placeholder height used while skipped, and
+ * `auto` tells the engine to replace that guess with the real height once the
+ * box has been rendered a first time.
+ *
+ * Containment sits on the *rows*, never on a `<li>` or a `<details>`. A trace
+ * node's subtree is 138 to 8,474 px tall, so no honest number describes it, and
+ * a guessed container height moves everything below it — which is how
+ * `content-visibility` breaks a deep `#anchor` link. A row is a different kind
+ * of box: measured on sbe-detailing, all 128 of them are exactly 30 px tall,
+ * and the 54 math blocks run 74–140 px with a mean of 98.9. Those two classes
+ * carry 11,352 of the page's 11,971 elements, so the containment covers 95% of
+ * the tree while the page height stays a sum of accurate numbers.
+ *
+ * The numbers below are those measurements minus each box's own `py-1`
+ * (8 px): `contain-intrinsic-size` describes the *content* box, and the
+ * padding is added back on top of it. Getting that wrong is not cosmetic —
+ * counting the padding twice added 1,140 px of phantom scroll height to
+ * sbe-detailing.
+ */
+.trace-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 22px;
+}
+
+.trace-body {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 90px;
+}
+
+/**
  * Bar-station hover, in the plan section — the app's signature interaction.
  *
  * `r` is a presentation attribute *and* a CSS property, so the dot can grow

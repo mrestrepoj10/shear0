@@ -166,7 +166,10 @@ function NodeBody({ node }: { node: Traced<unknown> }) {
   return (
     <>
       {hasMath ? (
-        <div className="mb-1 ml-3 flex flex-col gap-1 overflow-x-auto border-l border-dashed border-border py-1 pl-3 text-sm2">
+        // `trace-body`: the display math is the heaviest thing on the page and
+        // its box is a consistent 74-140 px, so it is the other half of the
+        // deferred-rendering split described in `globals.css`.
+        <div className="trace-body mb-1 ml-3 flex flex-col gap-1 overflow-x-auto border-l border-dashed border-border py-1 pl-3 text-sm2">
           {node.formula === undefined ? null : (
             <Tex display className="text-foreground">
               {node.formula}
@@ -188,7 +191,10 @@ function NodeBody({ node }: { node: Traced<unknown> }) {
 
 function TraceNode({ view }: { view: TraceView }) {
   const { node } = view;
-  const rowClass = "flex min-w-0 items-baseline gap-2 py-1";
+  // `trace-row`: every row on the page is exactly 30 px tall, so it can be
+  // handed to `content-visibility` with an intrinsic size that is not a guess.
+  // See the block in `globals.css`.
+  const rowClass = "trace-row flex min-w-0 items-baseline gap-2 py-1";
   const liClass = cn(view.depth > 0 && "border-l border-border pl-3");
 
   if (view.children.length === 0) {
