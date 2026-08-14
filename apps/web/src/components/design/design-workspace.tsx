@@ -8,7 +8,7 @@
 import type { WallInput } from "@kern/engine";
 import { useEffect, useRef } from "react";
 import { notify } from "@/components/ui/sonner";
-import { InputsPanel } from "@/components/design/inputs-panel";
+import { InputsPanel, WallToolbar } from "@/components/design/inputs-panel";
 import { ResultsPanels } from "@/components/design/results-panels";
 import { ResultsSummary, VerdictStrip } from "@/components/design/results-summary";
 import { WallCanvas } from "@/components/design/wall-canvas";
@@ -66,7 +66,14 @@ function Workspace({ linkFailed }: { linkFailed: boolean }) {
         <VerdictStrip report={report} />
       )}
 
-      <div className="grid grid-cols-1 gap-6 pt-5 lg:grid-cols-[380px_minmax(0,1fr)]">
+      {/* Above the grid, spanning both columns: these two controls act on the
+          whole design, and keeping them out of the left column is what lets the
+          inputs and the drawings start on the same line. */}
+      <div className="pt-5">
+        <WallToolbar />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 pt-3 lg:grid-cols-[380px_minmax(0,1fr)]">
         <aside className="min-w-0">
           <InputsPanel />
         </aside>
@@ -76,7 +83,7 @@ function Workspace({ linkFailed }: { linkFailed: boolean }) {
             /* The exception was the only thing this panel said, and a stack
                message is not a next step. The instruction leads; the engine's
                own words stay one click away for whoever needs them. */
-            <div className="rounded-xl border border-border p-4">
+            <div className="rounded-xl bg-card p-4 ring-1 ring-foreground/10">
               <p className="text-sm text-destructive">
                 the engine could not run on these inputs — check that ℓw, h and every bar spacing
                 are greater than zero, then try again

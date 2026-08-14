@@ -23,6 +23,10 @@ import {
 } from "@kern/engine";
 import { Plus, RotateCcw, X } from "lucide-react";
 import type { ReactNode } from "react";
+import {
+  stationSourceAt,
+  type StationSource,
+} from "@/components/design/drawing/plan-section";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { notify } from "@/components/ui/sonner";
@@ -42,11 +46,13 @@ import {
   PRESET_LABELS,
   PRESET_ORDER,
   PRESET_SHORT,
+  useSelection,
   useWallDispatch,
   useWallInput,
   type PresetId,
   type WallAction,
 } from "@/lib/wall-state";
+import { cn } from "@/lib/utils";
 
 const BAR_OPTIONS: SelectOption<BarSize>[] = BAR_SIZES.map((size) => ({
   value: size,
@@ -252,9 +258,27 @@ function MaterialsCard({ input, dispatch }: PanelProps) {
   );
 }
 
+/**
+ * The other half of the selection the plan section publishes.
+ *
+ * Hovering or tabbing a bar station in the drawing says "this bar, at this x";
+ * the answer to "which row put it there" is these two fields, so they light up.
+ * `stationSourceAt` is the plan section's own rule, exported rather than
+ * re-derived — the bar positions are the engine's and the end-zone reach is
+ * computed in exactly one place.
+ */
 function ReinforcementCard({ input, dispatch }: PanelProps) {
   const { endZone } = input;
   const curtains = Math.min(input.vertical.curtains, input.horizontal.curtains);
+  const selection = useSelection();
+  const lit =
+    selection?.kind === "bar-station" ? stationSourceAt(input, selection.x) : null;
+  /** the highlight itself: a tint, at the row's own rhythm, nothing that moves */
+  const litRow = (source: StationSource) =>
+    cn(
+      "-mx-1 rounded-sm px-1 transition-colors duration-150",
+      lit === source && "bg-muted/40",
+    );
 
   return (
     <SectionCard
@@ -286,25 +310,29 @@ function ReinforcementCard({ input, dispatch }: PanelProps) {
       }
     >
       <FieldGroup>
-        <FieldRow label="vertical bar" hint="ρℓ, longitudinal">
-          <SelectField
-            value={input.vertical.bar}
-            options={BAR_OPTIONS}
-            onValueChange={(bar) => dispatch({ type: "setLayer", layer: "vertical", patch: { bar } })}
-          />
-        </FieldRow>
-        <FieldRow label="vertical spacing">
-          <NumberField
-            value={input.vertical.spacing}
-            onValueChange={(value) => {
-              if (value === undefined || value <= 0) return false;
-              dispatch({ type: "setLayer", layer: "vertical", patch: { spacing: value } });
-              return true;
-            }}
-            unit="in"
-            min={1}
-          />
-        </FieldRow>
+        <div className={cn("flex flex-col gap-1.5", litRow("vertical"))}>
+          <FieldRow label="vertical bar" hint="ρℓ, longitudinal">
+            <SelectField
+              value={input.vertical.bar}
+              options={BAR_OPTIONS}
+              onValueChange={(bar) =>
+                dispatch({ type: "setLayer", layer: "vertical", patch: { bar } })
+              }
+            />
+          </FieldRow>
+          <FieldRow label="vertical spacing">
+            <NumberField
+              value={input.vertical.spacing}
+              onValueChange={(value) => {
+                if (value === undefined || value <= 0) return false;
+                dispatch({ type: "setLayer", layer: "vertical", patch: { spacing: value } });
+                return true;
+              }}
+              unit="in"
+              min={1}
+            />
+          </FieldRow>
+        </div>
         <FieldRow label="horizontal bar" hint="ρt, transverse">
           <SelectField
             value={input.horizontal.bar}
@@ -345,7 +373,7 @@ function ReinforcementCard({ input, dispatch }: PanelProps) {
       </div>
 
       {endZone === undefined ? null : (
-        <FieldGroup>
+        <FieldGroup className={litRow("endZone")}>
           <FieldRow label="end-zone bar">
             <SelectField
               value={endZone.bar}
@@ -769,7 +797,9 @@ function DemandCard({
     <div
       role="group"
       aria-label={caseName}
-      className="flex flex-col gap-2 rounded-lg border border-border p-2.5"
+      // Concentric with the card that holds it: 14 px outer, 12 px of padding,
+      // so the inner box wants ~6 px, not the 10 px it had.
+      className="flex flex-col gap-2 rounded-sm border border-border p-2.5"
     >
       <div className="flex items-center gap-2">
         <input
@@ -848,79 +878,96 @@ function activePreset(input: WallInput): PresetId | null {
   return null;
 }
 
-export function InputsPanel() {
+/**
+ * Where a design starts from, and how it is thrown away — the two controls that
+ * act on the whole wall rather than on one column of it.
+ *
+ * It sits *above* the two-column grid, not inside the inputs column, which is
+ * what makes the two columns' first cards share a top edge: as the inputs
+ * column's own header it pushed the geometry card 43 px below the drawing plate
+ * beside it, and two panels that begin at different heights read as two
+ * unrelated pages.
+ */
+export function WallToolbar() {
   const input = useWallInput();
   const dispatch = useWallDispatch();
   const active = activePreset(input);
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="font-mono text-xs tracking-tight text-muted-foreground">wall</h2>
-        <div className="flex items-center gap-2">
-          <ToggleGroup
-            value={active === null ? [] : [active]}
-            onValueChange={(value: string[]) => {
-              const next = value[0];
-              if (next === undefined) return;
-              const id = next as PresetId;
-              const preset = PRESETS[id];
-              if (preset === undefined) return;
-              const previous = input;
-              dispatch({ type: "loadPreset", input: preset });
-              // Only when there were edits to lose. Swapping between pristine
-              // presets discards nothing, and the pressed toggle already said
-              // what happened — a toast there would be pure noise.
-              if (active === null) {
-                undoToast(`loaded ${PRESET_PHRASE[id]}`, () =>
-                  dispatch({ type: "loadPreset", input: previous }),
-                );
-              }
-            }}
-            variant="outline"
-            size="sm"
-            spacing={0}
-            aria-label="starting point"
-          >
-            {/* `PRESET_LABELS` was built and never rendered, so the toggle
-                shipped "ex 1 / ex 2 / blank" and nothing on the page said what
-                either example was. The full label cannot fit three-across in
-                this column, so it arrives as the accessible name and the
-                tooltip while the abbreviation stays visible. */}
-            {PRESET_ORDER.map((id) => (
-              <ToggleGroupItem
-                key={id}
-                value={id}
-                size="sm"
-                variant="outline"
-                title={PRESET_LABELS[id]}
-                aria-label={PRESET_LABELS[id]}
-                className="font-mono text-xs2"
-              >
-                {PRESET_SHORT[id]}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-          <Button
-            size="xs"
-            variant="ghost"
-            onClick={() => {
-              const previous = input;
-              dispatch({ type: "reset" });
-              // Nothing was discarded if this already *was* example 1.
-              if (active !== "example-1") {
-                undoToast("wall reset to example 1", () =>
-                  dispatch({ type: "loadPreset", input: previous }),
-                );
-              }
-            }}
-          >
-            <RotateCcw />
-            reset
-          </Button>
-        </div>
+    <div className="flex items-center justify-between gap-2">
+      <h2 className="font-mono text-xs tracking-tight text-muted-foreground">wall</h2>
+      <div className="flex items-center gap-2">
+        <ToggleGroup
+          value={active === null ? [] : [active]}
+          onValueChange={(value: string[]) => {
+            const next = value[0];
+            if (next === undefined) return;
+            const id = next as PresetId;
+            const preset = PRESETS[id];
+            if (preset === undefined) return;
+            const previous = input;
+            dispatch({ type: "loadPreset", input: preset });
+            // Only when there were edits to lose. Swapping between pristine
+            // presets discards nothing, and the pressed toggle already said
+            // what happened — a toast there would be pure noise.
+            if (active === null) {
+              undoToast(`loaded ${PRESET_PHRASE[id]}`, () =>
+                dispatch({ type: "loadPreset", input: previous }),
+              );
+            }
+          }}
+          variant="outline"
+          size="sm"
+          spacing={0}
+          aria-label="starting point"
+        >
+          {/* `PRESET_LABELS` was built and never rendered, so the toggle
+              shipped "ex 1 / ex 2 / blank" and nothing on the page said what
+              either example was. The full label cannot fit three-across in
+              this column, so it arrives as the accessible name and the
+              tooltip while the abbreviation stays visible. */}
+          {PRESET_ORDER.map((id) => (
+            <ToggleGroupItem
+              key={id}
+              value={id}
+              size="sm"
+              variant="outline"
+              title={PRESET_LABELS[id]}
+              aria-label={PRESET_LABELS[id]}
+              className="font-mono text-xs2"
+            >
+              {PRESET_SHORT[id]}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+        <Button
+          size="xs"
+          variant="ghost"
+          onClick={() => {
+            const previous = input;
+            dispatch({ type: "reset" });
+            // Nothing was discarded if this already *was* example 1.
+            if (active !== "example-1") {
+              undoToast("wall reset to example 1", () =>
+                dispatch({ type: "loadPreset", input: previous }),
+              );
+            }
+          }}
+        >
+          <RotateCcw />
+          reset
+        </Button>
       </div>
+    </div>
+  );
+}
 
+export function InputsPanel() {
+  const input = useWallInput();
+  const dispatch = useWallDispatch();
+
+  return (
+    <div className="flex flex-col gap-3">
       <GeometryCard input={input} dispatch={dispatch} />
       <MaterialsCard input={input} dispatch={dispatch} />
       <SystemCard input={input} dispatch={dispatch} />
