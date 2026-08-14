@@ -25,6 +25,10 @@ export function Navbar() {
       <div className="mx-auto flex h-12 max-w-5xl items-center gap-6 px-4">
         <Link
           href="/"
+          // The product name is a word in no language: machine translation
+          // turns "kern" into "core"/"kernel" and the brand disappears from
+          // its own header.
+          translate="no"
           className="py-1.5 text-sm font-semibold tracking-tight"
           {...(pathname === "/" ? { "aria-current": "page" as const } : {})}
         >

@@ -98,6 +98,9 @@ export function RefBadge({ refer, className }: { refer: CodeRef; className?: str
           <Badge
             variant="outline"
             tabIndex={0}
+            // A code reference is an identifier, not prose: an auto-translator
+            // will happily turn §18.10.6.4 into something that cites nothing.
+            translate="no"
             className={cn(
               "rounded-sm px-1.5 font-mono text-xs2 font-normal text-muted-foreground",
               className,

@@ -18,8 +18,8 @@ export const metadata: Metadata = {
 export default function LearnPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-16">
-      <h1 className="text-2xl font-semibold tracking-tight">learn</h1>
-      <p className="mt-3 max-w-prose font-sans text-sm text-muted-foreground">
+      <h1 className="text-2xl font-semibold tracking-tight text-balance">learn</h1>
+      <p className="mt-3 max-w-prose font-sans text-pretty text-sm text-muted-foreground">
         kern&rsquo;s checks are traceable: every number carries the code section, the formula and
         the substituted values that produced it. These walkthroughs are made of that. Each one runs
         the real engine on a real wall — the two MNL-17(21) handbook examples — and shows every step
@@ -33,7 +33,7 @@ export default function LearnPage() {
       {LEARN_GROUPS.map((group) => (
         <section key={group.id} className="mt-10">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border pb-2">
-            <h2 className="font-mono text-xs tracking-tight text-foreground">{group.title}</h2>
+            <h2 className="font-mono text-xs tracking-tight text-balance text-foreground">{group.title}</h2>
             <span className="font-mono text-xs2 text-muted-foreground">{group.blurb}</span>
           </div>
 

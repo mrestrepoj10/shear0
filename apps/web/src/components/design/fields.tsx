@@ -198,7 +198,12 @@ export function NumberField({
           )}
         />
         {unit === undefined ? null : (
-          <span className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-xs2 text-muted-foreground">
+          // `in`, `ksi`, `kip-ft` are units, and a translator that renders
+          // `in` as a preposition changes what the number means.
+          <span
+            translate="no"
+            className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-xs2 text-muted-foreground"
+          >
             {unit}
           </span>
         )}

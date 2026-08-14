@@ -190,6 +190,16 @@ html .katex {
 }
 
 /**
+ * Full-bleed rows: the verdict strip and the footer run edge to edge, so in
+ * landscape on a notched phone their text can sit under the cutout. `max()`
+ * keeps the existing 1 rem everywhere the inset is zero, which is everywhere
+ * but that case.
+ */
+.bleed-inline {
+  padding-inline: max(1rem, env(safe-area-inset-left)) max(1rem, env(safe-area-inset-right));
+}
+
+/**
  * Bar-station hover, in the plan section — the app's signature interaction.
  *
  * `r` is a presentation attribute *and* a CSS property, so the dot can grow

@@ -136,7 +136,10 @@ export function VerdictStrip({ report }: { report: WallReport }) {
       : VERDICT_TEXT[report.status];
 
   return (
-    <div className="sticky top-12 z-30 -mx-4 border-b border-border bg-background/85 px-4 py-2.5 backdrop-blur">
+    /* `bleed-inline` replaces the flat `px-4`: the strip is pulled full-bleed
+       by `-mx-4`, so on a notched phone in landscape the verdict would sit
+       under the cutout. */
+    <div className="bleed-inline sticky top-12 z-30 -mx-4 border-b border-border bg-background/85 py-2.5 backdrop-blur">
       {/* The verdict is the one thing on the page that changes without being
           touched — every keystroke anywhere can flip it. The live region is
           this row, which is always mounted and always one line tall, so a flip
