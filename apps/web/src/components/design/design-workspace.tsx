@@ -13,6 +13,7 @@ import { ResultsPanels } from "@/components/design/results-panels";
 import { ResultsSummary, VerdictStrip } from "@/components/design/results-summary";
 import { WallCanvas } from "@/components/design/wall-canvas";
 import { useWallUrlSync } from "@/lib/url-state";
+import { WALL_PARAM, encodeWallInput } from "@/lib/wall-codec";
 import {
   WallProvider,
   useDeferredWallView,
@@ -69,8 +70,17 @@ function Workspace({ linkFailed }: { linkFailed: boolean }) {
       {/* Above the grid, spanning both columns: these two controls act on the
           whole design, and keeping them out of the left column is what lets the
           inputs and the drawings start on the same line. */}
-      <div className="pt-5">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-5">
         <WallToolbar />
+        {/* The calc sheet is the same save file on a document route — the link
+            carries the wall, so it opens (and prints, and PDFs) exactly what is
+            on screen right now. */}
+        <a
+          href={`/design/report?${WALL_PARAM}=${encodeWallInput(input)}`}
+          className="font-mono text-xs2 text-muted-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+        >
+          calc sheet →
+        </a>
       </div>
 
       <div className="grid grid-cols-1 gap-6 pt-3 lg:grid-cols-[380px_minmax(0,1fr)]">

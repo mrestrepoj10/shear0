@@ -18,9 +18,10 @@ import {
   type WallReport,
   type WallInput,
 } from "@kern/engine";
-import { memo, useMemo, useState, type ReactNode } from "react";
+import { memo, useMemo, useRef, useState, type ReactNode } from "react";
 import { XyChart, type ChartToken, type XyFocus, type XyMarker, type XySeries } from "@/components/charts/xy-chart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChartExportButtons } from "@/components/design/chart-export";
 import { num, statusText } from "@/components/design/status";
 import { cn } from "@/lib/utils";
 
@@ -86,6 +87,7 @@ export const InteractionChart = memo(function InteractionChart({
   report: WallReport;
 }) {
   const [focus, setFocus] = useState<XyFocus<PmMeta> | null>(null);
+  const plotRef = useRef<HTMLDivElement>(null);
 
   const { series, markers, cap } = useMemo(() => {
     const design = designCurve(input, { points: CURVE_POINTS });
@@ -156,12 +158,16 @@ export const InteractionChart = memo(function InteractionChart({
           >
             P–M interaction
           </CardTitle>
-          <span className="truncate font-mono text-xs2 text-muted-foreground">
-            ACI 318-19 §22.2 / §22.4
+          <span className="flex items-center gap-2">
+            <span className="truncate font-mono text-xs2 text-muted-foreground">
+              ACI 318-19 §22.2 / §22.4
+            </span>
+            <ChartExportButtons containerRef={plotRef} filename="pm-interaction" />
           </span>
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
+        <div ref={plotRef}>
         <XyChart<PmMeta>
           ariaLabel="P–M interaction diagram"
           ariaDescription="Nominal and design axial–moment interaction surfaces with the factored demand points."
@@ -172,6 +178,7 @@ export const InteractionChart = memo(function InteractionChart({
           y={Y_AXIS}
           onFocusChange={setFocus}
         />
+        </div>
 
         <ChartSummary cap={cap} markers={markers} />
 

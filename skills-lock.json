@@ -85,6 +85,30 @@
       "skillPath": "skills/interface-review/SKILL.md",
       "computedHash": "f495eafe40a20f8d051c8d50c8f60fe73c915871eddc118af3a4a63a317fec4b"
     },
+    "json-render-core": {
+      "source": "vercel-labs/json-render",
+      "sourceType": "github",
+      "skillPath": "skills/core/SKILL.md",
+      "computedHash": "73852c362051c36ea4299fa36dda654171d0a81b9ed738e5106059b27d9a6b9b"
+    },
+    "json-render-image": {
+      "source": "vercel-labs/json-render",
+      "sourceType": "github",
+      "skillPath": "skills/image/SKILL.md",
+      "computedHash": "05e286347837a66d1e4217ec4c0e319a8dcb70cfe3cab761bd1fbf16640bdde1"
+    },
+    "json-render-react": {
+      "source": "vercel-labs/json-render",
+      "sourceType": "github",
+      "skillPath": "skills/react/SKILL.md",
+      "computedHash": "d6df7301ffd78cd82085df6f307bf2e708d672ac038afd5009ef2386b009c4cf"
+    },
+    "json-render-react-pdf": {
+      "source": "vercel-labs/json-render",
+      "sourceType": "github",
+      "skillPath": "skills/react-pdf/SKILL.md",
+      "computedHash": "01d78bd514ea38e16442e08fe149f9c4ba403f51f175524104ea4e9537d01f7e"
+    },
     "pick-ui-library": {
       "source": "emilkowalski/skills",
       "sourceType": "github",
