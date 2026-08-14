@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Navbar } from "@/components/navbar";
 import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { DISCLAIMER } from "@/lib/copy";
 
 const geistSans = Geist({
@@ -38,12 +39,17 @@ function Footer() {
           href={`${REPO}/blob/main/LICENSE`}
           target="_blank"
           rel="noreferrer"
-          className="hover:text-foreground"
+          className="transition-colors duration-150 hover:text-foreground"
         >
           MIT
         </a>
         <span aria-hidden="true">·</span>
-        <a href={REPO} target="_blank" rel="noreferrer" className="hover:text-foreground">
+        <a
+          href={REPO}
+          target="_blank"
+          rel="noreferrer"
+          className="transition-colors duration-150 hover:text-foreground"
+        >
           github
         </a>
       </div>
@@ -73,11 +79,17 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           >
             skip to content
           </a>
-          <Navbar />
-          <main id="main" tabIndex={-1} className="flex-1 scroll-mt-16 outline-none">
-            {children}
-          </main>
-          <Footer />
+          {/* One provider for every tooltip on the page. 400 ms is long enough
+              that reading past a code ref never summons one, and the provider's
+              grouping means that once one is open the next opens instantly —
+              which is what a screen with fifteen `RefBadge`s needs. */}
+          <TooltipProvider delay={400}>
+            <Navbar />
+            <main id="main" tabIndex={-1} className="flex-1 scroll-mt-16 outline-none">
+              {children}
+            </main>
+            <Footer />
+          </TooltipProvider>
           {/* One toaster for the whole app; see `ui/sonner.tsx` for the rules. */}
           <Toaster />
         </ThemeProvider>

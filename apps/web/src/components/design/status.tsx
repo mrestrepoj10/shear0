@@ -16,7 +16,9 @@
 
 import type { CheckStatus, CodeRef } from "@kern/engine";
 import { fmt } from "@kern/engine";
+import type { CSSProperties } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 export const STATUS_LABEL: Record<CheckStatus, string> = {
@@ -78,19 +80,37 @@ export function StatusBadge({
   );
 }
 
-/** ACI reference, rendered as the mono badge used everywhere a code ref appears. */
+/**
+ * ACI reference, rendered as the mono badge used everywhere a code ref appears.
+ *
+ * The badge prints the section number alone; the standard it belongs to and the
+ * equation number live in the tooltip. That used to be a native `title` — about
+ * a second of delay, invisible to the keyboard, absent on touch — while the app
+ * carried a fully built Base UI tooltip nobody used. The badge takes a tab stop
+ * so the citation is reachable without a pointer; the provider in `layout.tsx`
+ * sets the delay once and opens adjacent badges instantly.
+ */
 export function RefBadge({ refer, className }: { refer: CodeRef; className?: string }) {
   return (
-    <Badge
-      variant="outline"
-      title={`${refer.standard} §${refer.section}${refer.eq ? ` (Eq. ${refer.eq})` : ""}`}
-      className={cn(
-        "rounded-sm px-1.5 font-mono text-xs2 font-normal text-muted-foreground",
-        className,
-      )}
-    >
-      {refer.section}
-    </Badge>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Badge
+            variant="outline"
+            tabIndex={0}
+            className={cn(
+              "rounded-sm px-1.5 font-mono text-xs2 font-normal text-muted-foreground",
+              className,
+            )}
+          />
+        }
+      >
+        {refer.section}
+      </TooltipTrigger>
+      <TooltipContent className="font-mono">
+        {`${refer.standard} §${refer.section}${refer.eq ? ` (Eq. ${refer.eq})` : ""}`}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -135,9 +155,18 @@ export function UtilizationBar({
       aria-valuemax={UTILIZATION_DISPLAY_CAP}
       aria-label="utilization"
     >
+      {/*
+        The fill is a full-width bar scaled from its left edge, never a width.
+        Animating `width` re-laid-out fifteen bars on every keystroke and the
+        result trailed the number printed beside it; a transform is composited,
+        so the bar and its number move together.
+      */}
       <div
-        className={cn("h-full transition-[width] duration-150", fill)}
-        style={{ width: `${(fraction * 100).toFixed(2)}%` }}
+        className={cn(
+          "h-full w-full origin-left transition-transform duration-180 ease-[cubic-bezier(0.23,1,0.32,1)]",
+          fill,
+        )}
+        style={{ "--fill": fraction.toFixed(4), transform: "scaleX(var(--fill))" } as CSSProperties}
       />
     </div>
   );
