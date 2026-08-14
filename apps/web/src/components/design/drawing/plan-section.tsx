@@ -66,20 +66,37 @@ function endZoneReach(w: WallInput): number {
   return reach;
 }
 
+/** which input row put a station at this x */
+export type StationSource = "endZone" | "vertical";
+
 interface Station extends BarStation {
-  /** which input row put this station here */
-  source: "endZone" | "vertical";
+  source: StationSource;
   /** bars at this station across all curtains */
   count: number;
   bar: BarSize;
+}
+
+function sourceAt(w: WallInput, x: number, reach: number): StationSource {
+  const nearEnd = x <= reach + 1e-6 || x >= w.geometry.lw - reach - 1e-6;
+  return nearEnd && w.endZone?.bar !== undefined ? "endZone" : "vertical";
+}
+
+/**
+ * Which reinforcement row produced the bar at this x — the one thing a consumer
+ * of a `bar-station` selection needs to know, exported so nothing has to
+ * re-derive it. The station positions themselves are always the engine's
+ * (`barPositions`); only the end-zone *reach* is geometry, and it lives in
+ * exactly one place, above.
+ */
+export function stationSourceAt(w: WallInput, x: number): StationSource {
+  return sourceAt(w, x, endZoneReach(w));
 }
 
 function resolveStations(w: WallInput): Station[] {
   const reach = endZoneReach(w);
   const ezBar = w.endZone?.bar;
   return barPositions(w).map((st) => {
-    const nearEnd = st.x <= reach + 1e-6 || st.x >= w.geometry.lw - reach - 1e-6;
-    const source: Station["source"] = nearEnd && ezBar !== undefined ? "endZone" : "vertical";
+    const source = sourceAt(w, st.x, reach);
     const bar = source === "endZone" && ezBar !== undefined ? ezBar : w.vertical.bar;
     return { ...st, source, bar, count: Math.max(1, Math.round(st.area / BARS[bar].Ab)) };
   });
@@ -493,8 +510,13 @@ export function WallPlanSection({ input }: { input: WallInput }) {
       <g>
         {stations.map((st, i) =>
           curtains.map((y, c) => (
+            /* `r` is a CSS-animatable geometry property, so the station grows
+               instead of jumping ×1.75 between two frames. The class carries
+               the transition (see `globals.css`), which is also how the global
+               reduced-motion block reaches it. */
             <circle
               key={`bar-${st.x}-${c}`}
+              className="station-bar"
               cx={X(st.x)}
               cy={y}
               r={active === i ? barR * 1.75 : barR}
@@ -660,7 +682,7 @@ export function WallPlanSection({ input }: { input: WallInput }) {
                   x2={X(st.x)}
                   y2={webBot + 8}
                   stroke="currentColor"
-                  className="opacity-70"
+                  className="station-fade opacity-70"
                   {...HAIRLINE}
                 />
               ) : null}
@@ -700,7 +722,9 @@ function StationReadout({
   const by = -18 - boxH;
 
   return (
-    <g aria-hidden="true" pointerEvents="none">
+    /* Enters with the station it belongs to: opacity 0→1 and 2 px of travel in
+       130 ms, so the box arrives instead of appearing. */
+    <g aria-hidden="true" pointerEvents="none" className="station-readout">
       <line x1={x} y1={-8} x2={x} y2={by + boxH} stroke="currentColor" className="opacity-50" {...HAIRLINE} />
       <rect
         x={bx}

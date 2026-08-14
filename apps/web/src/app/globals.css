@@ -148,6 +148,45 @@ html .katex {
 }
 
 /**
+ * Bar-station hover, in the plan section — the app's signature interaction.
+ *
+ * `r` is a presentation attribute *and* a CSS property, so the dot can grow
+ * rather than jump ×1.75 between two frames; the readout and its crosshair
+ * arrive on the same 130 ms. Written here rather than inline so the global
+ * reduced-motion block below reaches all three.
+ *
+ * Gated on a fine pointer with real hover, and deliberately gating *motion
+ * only*: on touch the tap is the only path to the readout (that is what the
+ * 24 px hit floor exists for), so the state itself is never gated — a coarse
+ * pointer gets the same readout, instantly. Keyboard focus drives exactly the
+ * same states through `focused`, so it is never gated away either.
+ */
+@media (hover: hover) and (pointer: fine) {
+  .station-bar {
+    transition: r 130ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  .station-fade {
+    animation: station-fade-in 130ms ease-out;
+  }
+  .station-readout {
+    animation: station-readout-in 130ms ease-out;
+  }
+}
+
+@keyframes station-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes station-readout-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}
+
+/**
  * One global reduce block, ahead of the motion work.
  *
  * It only *shortens* durations — it never introduces a transition — so
