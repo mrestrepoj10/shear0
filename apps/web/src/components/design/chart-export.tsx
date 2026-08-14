@@ -16,21 +16,21 @@ export function ChartExportButtons({
   containerRef,
   filename,
 }: {
-  /** the element whose first `<svg>` is the exported picture */
+  /** the element hosting the chart — the library finds its `svg.ts-chart` */
   containerRef: RefObject<HTMLElement | null>;
   filename: string;
 }) {
-  const withSvg = async (run: (svg: SVGSVGElement) => Promise<void> | void, done: string) => {
-    const svg = containerRef.current?.querySelector("svg");
-    if (!svg) return;
+  const withChart = async (run: (target: Element) => Promise<void> | void, done: string) => {
+    const target = containerRef.current;
+    if (!target) return;
     try {
-      await run(svg);
+      await run(target);
       notify({ id: `export-${filename}`, title: done });
     } catch {
       // Clipboard images are still refused by some browsers — the download
       // path answers the same intent without a permissions fight.
       try {
-        await downloadPng(svg, filename);
+        await downloadPng(target, filename);
         notify({ id: `export-${filename}`, title: "copy unavailable — saved a png instead" });
       } catch {
         notify({ id: `export-${filename}`, title: "export failed" });
@@ -44,7 +44,7 @@ export function ChartExportButtons({
         variant="ghost"
         size="xs"
         className="font-mono text-2xs text-muted-foreground"
-        onClick={() => void withSvg(copyPng, "png copied")}
+        onClick={() => void withChart(copyPng, "png copied")}
       >
         copy png
       </Button>
@@ -52,7 +52,7 @@ export function ChartExportButtons({
         variant="ghost"
         size="xs"
         className="font-mono text-2xs text-muted-foreground"
-        onClick={() => void withSvg(copySvg, "svg copied")}
+        onClick={() => void withChart(copySvg, "svg copied")}
       >
         copy svg
       </Button>
@@ -60,7 +60,7 @@ export function ChartExportButtons({
         variant="ghost"
         size="xs"
         className="font-mono text-2xs text-muted-foreground"
-        onClick={() => void withSvg((svg) => downloadSvg(svg, filename), "svg saved")}
+        onClick={() => void withChart((el) => downloadSvg(el, filename), "svg saved")}
       >
         save
       </Button>

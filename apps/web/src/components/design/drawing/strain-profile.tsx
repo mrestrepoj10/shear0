@@ -12,7 +12,7 @@
  * bought. Nothing is recomputed here — the drawing reads the slice.
  */
 
-import { barPositions, beta1, designSliceAt, type WallInput } from "@kern/engine";
+import { barPositions, beta1, designSliceAt, sectionAt, type WallInput } from "@kern/engine";
 import { DimLine } from "./dim-line";
 import { Drawing, Eps, HAIRLINE, Note, paddedViewBox } from "./drawing";
 import { dim, strain } from "./format";
@@ -25,9 +25,35 @@ const PAD = { top: 76, right: 104, bottom: 44, left: 80 };
 const FONT = 11;
 const EPS_CU = 0.003;
 
-export function StrainProfile({ input, Pu }: { input: WallInput; Pu: number }) {
+export function StrainProfile({
+  input,
+  Pu,
+  atC,
+}: {
+  input: WallInput;
+  Pu: number;
+  /**
+   * Draw the section at this neutral-axis depth instead of the governing
+   * slice — the P–M chart publishes it while the pointer traces a curve, so
+   * the drawing follows the hover. `sectionAt` reconstructs the whole slice
+   * from `c` alone; nothing else changes.
+   */
+  atC?: number;
+}) {
   const { lw, h } = input.geometry;
-  const slice = lw > 0 && h > 0 ? designSliceAt(input, Pu) : undefined;
+  const traced = atC !== undefined && lw > 0 && h > 0 && atC > 0 ? sectionAt(input, atC) : undefined;
+  const slice =
+    traced !== undefined
+      ? {
+          c: traced.c,
+          epsT: traced.epsT,
+          phi: traced.phi,
+          phiMn: traced.phi * traced.Mn,
+          Pn: traced.Pn,
+        }
+      : lw > 0 && h > 0
+        ? designSliceAt(input, Pu)
+        : undefined;
 
   if (slice === undefined) {
     return (
@@ -152,7 +178,9 @@ export function StrainProfile({ input, Pu }: { input: WallInput; Pu: number }) {
         φ = {slice.phi.toFixed(2)}
       </Note>
       <Note x={WALL_W} y={-46} anchor="end" size={9}>
-        Pu {dim(Pu, 0)} kip · φMn {dim(slice.phiMn, 0)} kip-ft
+        {traced !== undefined
+          ? `φPn ${dim(slice.phi * slice.Pn, 0)} kip · φMn ${dim(slice.phiMn, 0)} kip-ft`
+          : `Pu ${dim(Pu, 0)} kip · φMn ${dim(slice.phiMn, 0)} kip-ft`}
       </Note>
     </Drawing>
   );

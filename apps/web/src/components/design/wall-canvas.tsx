@@ -15,6 +15,7 @@
 
 import { fmt, type WallReport, type WallInput } from "@kern/engine";
 import { memo } from "react";
+import { useSelection } from "@/lib/wall-state";
 import { WallElevation } from "@/components/design/drawing/elevation";
 import { dim } from "@/components/design/drawing/format";
 import { WallPlanSection } from "@/components/design/drawing/plan-section";
@@ -84,6 +85,10 @@ function Plate({
 export const WallCanvas = memo(function WallCanvas({ input, report }: WallCanvasProps) {
   const { geometry } = input;
   const governing = governingDemand(report);
+  // Falls back to null outside a provider (the /learn contract holds). While
+  // the P–M chart publishes a traced slice, the strain profile follows it.
+  const selection = useSelection();
+  const tracedC = selection?.kind === "pm-slice" ? selection.c : undefined;
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -109,17 +114,23 @@ export const WallCanvas = memo(function WallCanvas({ input, report }: WallCanvas
         <Plate
           title="strain profile"
           note={
-            governing === null
-              ? "no load case"
-              : `${governing.label} · Pu ${fmt(governing.Pu, { dp: 0 })} kip`
+            tracedC !== undefined
+              ? `tracing P–M surface · c ${dim(tracedC, 1)} in`
+              : governing === null
+                ? "no load case"
+                : `${governing.label} · Pu ${fmt(governing.Pu, { dp: 0 })} kip`
           }
         >
-          {governing === null ? (
+          {governing === null && tracedC === undefined ? (
             <p className="py-6 text-center font-mono text-xs2 text-muted-foreground">
               add a load case to see the governing slice
             </p>
           ) : (
-            <StrainProfile input={input} Pu={governing.Pu} />
+            <StrainProfile
+              input={input}
+              Pu={governing?.Pu ?? 0}
+              {...(tracedC === undefined ? {} : { atC: tracedC })}
+            />
           )}
         </Plate>
       </div>

@@ -37,6 +37,14 @@ const DriftPanel = dynamic(() =>
   import("@/components/design/drift-panel").then((m) => m.DriftPanel),
 );
 
+const DesignMap = dynamic(() =>
+  import("@/components/design/design-map").then((m) => m.DesignMap),
+);
+
+const DesignOptions = dynamic(() =>
+  import("@/components/design/design-options").then((m) => m.DesignOptions),
+);
+
 export interface ResultsPanelsProps {
   input: WallInput;
   report: WallReport;
@@ -64,6 +72,8 @@ export function ResultsPanels({ input, report, deferred }: ResultsPanelsProps) {
           condition is the panel's own first line, so the rendered result is
           unchanged. */}
       {chartInput.system === "special" ? <DriftPanel input={chartInput} /> : null}
+      <DesignMap input={chartInput} report={chartReport} />
+      <DesignOptions input={input} report={report} />
       <UtilizationList report={report} />
       <TraceReport input={input} report={report} />
     </div>
