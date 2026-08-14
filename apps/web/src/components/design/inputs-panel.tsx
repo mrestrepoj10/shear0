@@ -25,6 +25,7 @@ import { Plus, RotateCcw, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { notify } from "@/components/ui/sonner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   DerivedRow,
@@ -79,6 +80,22 @@ const PRESET_ORDER: { id: PresetId; label: string }[] = [
   { id: "example-2", label: "ex 2" },
   { id: "blank", label: "blank" },
 ];
+
+/** How a preset is named in a sentence, for the undo toast. */
+const PRESET_PHRASE: Record<PresetId, string> = {
+  "example-1": "example 1",
+  "example-2": "example 2",
+  blank: "a blank wall",
+};
+
+/**
+ * The undo toast for an action that throws a wall away. There is no history
+ * entry to go back to — the URL sync uses `replaceState` — so this toast *is*
+ * the recovery path, and it is monochrome like every other one.
+ */
+function undoToast(title: string, restore: () => void): void {
+  notify({ title, duration: 6000, action: { label: "undo", onClick: restore } });
+}
 
 /**
  * The presets pre-encoded once, at module scope: the presets are constants, so
@@ -612,7 +629,18 @@ function BoundaryElementCard({ input, dispatch }: PanelProps) {
         <Button
           size="xs"
           variant="ghost"
-          onClick={() => dispatch({ type: "setSbe", patch: sbe === undefined ? {} : null })}
+          onClick={() => {
+            if (sbe === undefined) {
+              dispatch({ type: "setSbe", patch: {} });
+              return;
+            }
+            // Eight detailing decisions, gone on one click. `setSbe` with the
+            // whole object back restores it exactly (every field is required).
+            dispatch({ type: "setSbe", patch: null });
+            undoToast("boundary element removed", () =>
+              dispatch({ type: "setSbe", patch: sbe }),
+            );
+          }}
         >
           {sbe === undefined ? "add" : "remove"}
         </Button>
@@ -784,7 +812,12 @@ function DemandCard({
             size="icon-xs"
             variant="ghost"
             aria-label={`remove load case ${demand.label ?? demand.id}`}
-            onClick={() => dispatch({ type: "removeDemand", id: demand.id })}
+            onClick={() => {
+              dispatch({ type: "removeDemand", id: demand.id });
+              undoToast(`removed ${demand.label ?? demand.id}`, () =>
+                dispatch({ type: "restoreDemand", index, demand }),
+              );
+            }}
           >
             <X />
           </Button>
@@ -867,8 +900,19 @@ export function InputsPanel() {
             onValueChange={(value: string[]) => {
               const next = value[0];
               if (next === undefined) return;
-              const preset = PRESETS[next as PresetId];
-              if (preset !== undefined) dispatch({ type: "loadPreset", input: preset });
+              const id = next as PresetId;
+              const preset = PRESETS[id];
+              if (preset === undefined) return;
+              const previous = input;
+              dispatch({ type: "loadPreset", input: preset });
+              // Only when there were edits to lose. Swapping between pristine
+              // presets discards nothing, and the pressed toggle already said
+              // what happened — a toast there would be pure noise.
+              if (active === null) {
+                undoToast(`loaded ${PRESET_PHRASE[id]}`, () =>
+                  dispatch({ type: "loadPreset", input: previous }),
+                );
+              }
             }}
             variant="outline"
             size="sm"
@@ -887,7 +931,20 @@ export function InputsPanel() {
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
-          <Button size="xs" variant="ghost" onClick={() => dispatch({ type: "reset" })}>
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() => {
+              const previous = input;
+              dispatch({ type: "reset" });
+              // Nothing was discarded if this already *was* example 1.
+              if (active !== "example-1") {
+                undoToast("wall reset to example 1", () =>
+                  dispatch({ type: "loadPreset", input: previous }),
+                );
+              }
+            }}
+          >
             <RotateCcw />
             reset
           </Button>

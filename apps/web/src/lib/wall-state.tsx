@@ -74,6 +74,7 @@ export type WallAction =
   | { type: "setDemand"; id: string; patch: Partial<Omit<Demands, "id">> }
   | { type: "addDemand" }
   | { type: "removeDemand"; id: string }
+  | { type: "restoreDemand"; index: number; demand: Demands }
   | { type: "reset" }
   | { type: "loadPreset"; input: WallInput };
 
@@ -205,6 +206,15 @@ export function wallReducer(state: WallInput, action: WallAction): WallInput {
     }
     case "removeDemand":
       return { ...state, demands: state.demands.filter((d) => d.id !== action.id) };
+    // Undo for the above: the load case goes back where it was, because the
+    // order of the cases is the order the results read in. Idempotent — a
+    // second undo (double-clicked toast, restored id already present) no-ops.
+    case "restoreDemand": {
+      if (state.demands.some((d) => d.id === action.demand.id)) return state;
+      const demands = [...state.demands];
+      demands.splice(Math.min(Math.max(action.index, 0), demands.length), 0, action.demand);
+      return { ...state, demands };
+    }
     case "reset":
       return EXAMPLE_1;
     case "loadPreset":
