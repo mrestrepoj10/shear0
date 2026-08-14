@@ -6,11 +6,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/frame-labs/kern.git",
+    "url": "git+https://github.com/mrestrepoj10/kern.git",
     "directory": "packages/engine"
   },
-  "homepage": "https://github.com/frame-labs/kern#readme",
-  "bugs": "https://github.com/frame-labs/kern/issues",
+  "homepage": "https://github.com/mrestrepoj10/kern#readme",
+  "bugs": "https://github.com/mrestrepoj10/kern/issues",
   "keywords": ["aci-318", "structural-engineering", "concrete", "shear-wall", "structural-analysis"],
   "type": "module",
   "main": "./src/index.ts",
