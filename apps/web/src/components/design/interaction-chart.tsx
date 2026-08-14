@@ -150,7 +150,10 @@ export const InteractionChart = memo(function InteractionChart({
     <Card size="sm" className="gap-2">
       <CardHeader>
         <div className="flex items-baseline justify-between gap-2">
-          <CardTitle className="font-mono text-xs font-medium tracking-tight text-muted-foreground">
+          <CardTitle
+            render={<h2 />}
+            className="font-mono text-xs font-medium tracking-tight text-muted-foreground"
+          >
             P–M interaction
           </CardTitle>
           <span className="truncate font-mono text-[11px] text-muted-foreground">
@@ -170,6 +173,8 @@ export const InteractionChart = memo(function InteractionChart({
           onFocusChange={setFocus}
         />
 
+        <ChartSummary cap={cap} markers={markers} />
+
         <Readout focus={focus} cap={cap} markers={markers} />
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[10px] text-muted-foreground">
@@ -183,6 +188,73 @@ export const InteractionChart = memo(function InteractionChart({
     </Card>
   );
 });
+
+/**
+ * The picture, in words and numbers.
+ *
+ * `role="img"` on the plot is correct — it *is* one picture — but it also
+ * flattens the subtree, so every point behind it is unreachable. This is the
+ * same data the curve encodes, written out: the flat top, then a row per
+ * demand with the capacity the engine found at that P_u and whether the point
+ * landed inside the surface.
+ */
+function ChartSummary({
+  cap,
+  markers,
+}: {
+  cap: number;
+  markers: readonly XyMarker<PmMeta>[];
+}) {
+  const demands = markers.filter((m) => m.meta?.kind === "demand");
+
+  return (
+    <div className="sr-only">
+      <p>
+        Design interaction surface with the axial compression capped at {num(cap)} kip per ACI
+        318-19 §22.4.2.1.{" "}
+        {demands.length === 0
+          ? "No load cases are applied, so no demand points are plotted."
+          : `${demands.length} factored demand point${demands.length === 1 ? "" : "s"} plotted against it.`}
+      </p>
+      {demands.length === 0 ? null : (
+        <table>
+          <caption>Factored demands against the design interaction surface</caption>
+          <thead>
+            <tr>
+              <th scope="col">load case</th>
+              <th scope="col">Pu (kip)</th>
+              <th scope="col">Mu (kip-ft)</th>
+              <th scope="col">φMn at that Pu (kip-ft)</th>
+              <th scope="col">Mu / φMn</th>
+              <th scope="col">result</th>
+            </tr>
+          </thead>
+          <tbody>
+            {demands.map((marker) => {
+              const meta = marker.meta as MarkerMeta;
+              return (
+                <tr key={marker.id}>
+                  <th scope="row">{marker.label}</th>
+                  <td>{num(marker.y)}</td>
+                  <td>{num(marker.x)}</td>
+                  <td>{num(meta.phiMn)}</td>
+                  <td>{num(meta.utilization, 3)}</td>
+                  <td>
+                    {meta.status === "ok"
+                      ? "inside the surface"
+                      : meta.status === "ng"
+                        ? "outside the surface"
+                        : "not evaluated"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
 
 function Swatch({ dashed, children }: { dashed?: boolean; children: ReactNode }) {
   return (
@@ -235,7 +307,7 @@ function Readout({
 
   if (focus === null || meta === undefined) {
     return (
-      <p className="min-h-8 font-mono text-[11px] leading-4 text-muted-foreground">
+      <p aria-live="polite" className="min-h-8 font-mono text-[11px] leading-4 text-muted-foreground">
         φP<sub>n</sub> capped at 0.65 × 0.80 P<sub>o</sub> = {num(cap)} kip (22.4.2.1) — the flat
         top.
         <br />
@@ -246,7 +318,7 @@ function Readout({
 
   if (meta.kind === "demand") {
     return (
-      <p className="min-h-8 font-mono text-[11px] leading-4">
+      <p aria-live="polite" className="min-h-8 font-mono text-[11px] leading-4">
         <span className={statusText(meta.status)}>{focus.label}</span>{" "}
         <span className="text-muted-foreground">
           M<sub>u</sub> = {num(focus.x)} kip-ft · P<sub>u</sub> = {num(focus.y)} kip · V
@@ -263,7 +335,7 @@ function Readout({
 
   const design = meta.kind === "design";
   return (
-    <p className="min-h-8 font-mono text-[11px] leading-4 text-muted-foreground">
+    <p aria-live="polite" className="min-h-8 font-mono text-[11px] leading-4 text-muted-foreground">
       {design ? "design" : "nominal"} — {design ? "φM" : "M"}
       <sub>n</sub> = {num(focus.x)} kip-ft · {design ? "φP" : "P"}
       <sub>n</sub> = {num(focus.y)} kip{meta.capped ? " (at the axial cap)" : ""}

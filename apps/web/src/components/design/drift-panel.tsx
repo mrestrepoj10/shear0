@@ -236,6 +236,12 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
     const status = view.required ? "ng" : "ok";
     return (
       <Panel subtitle="ACI 318-19 §18.10.6.3 — stress-based path">
+        <p className="sr-only">
+          Stress-based boundary element check for load case {view.label}: the extreme-fiber
+          compressive stress is {num(view.sigma)} psi against a limit of {num(view.limit)} psi
+          (0.2f&apos;c), so special boundary elements are{" "}
+          {view.required ? "required" : "not required"}.
+        </p>
         <p className="font-mono text-[11px] leading-5 text-muted-foreground">
           hwcs/ℓw &lt; 2.0, so the boundary element is judged by the extreme-fiber stress and Eq.
           (18.10.6.2b) does not apply — there is no width to trade against drift.
@@ -260,6 +266,22 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
 
   return (
     <Panel subtitle="ACI 318-19 §18.10.6.2(b) — width against drift">
+      {/* The chart is one picture behind `role="img"`; these are the two
+          numbers it exists to compare, plus the answer they give. */}
+      <p className="sr-only">
+        Drift capacity swept over the boundary element width for load case {view.label}.{" "}
+        {capacity === undefined
+          ? "No boundary element is provided, so there is no capacity to compare."
+          : `At the provided width of ${num(provided, 1)} inches the capacity ratio δc/hwcs is ${capacity.toFixed(5)}${
+              view.floored ? " (the 0.015 floor)" : ""
+            }, against a required 1.5δu/hwcs of ${view.demand15.toFixed(5)} — ${
+              passes ? "the provided width passes" : "the provided width fails"
+            }.`}{" "}
+        {view.bRequired === null
+          ? `No swept width up to ${num(view.bMax, 1)} inches satisfies option (iii).`
+          : `Option (iii) is satisfied from ${num(view.bRequired, 1)} inches of width.`}
+      </p>
+
       {chart === null ? null : (
         <XyChart<DriftMeta>
           ariaLabel="drift capacity against boundary element width"
@@ -273,7 +295,7 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
         />
       )}
 
-      <p className="min-h-8 font-mono text-[11px] leading-4 text-muted-foreground">
+      <p aria-live="polite" className="min-h-8 font-mono text-[11px] leading-4 text-muted-foreground">
         {focus === null ? (
           <>
             c = {num(view.c, 2)} in · V<sub>e</sub> = {num(view.Ve)} kip · {view.label}
@@ -334,7 +356,10 @@ function Panel({ subtitle, children }: { subtitle: string; children: ReactNode }
     <Card size="sm" className="gap-2">
       <CardHeader>
         <div className="flex items-baseline justify-between gap-2">
-          <CardTitle className="font-mono text-xs font-medium tracking-tight text-muted-foreground">
+          <CardTitle
+            render={<h2 />}
+            className="font-mono text-xs font-medium tracking-tight text-muted-foreground"
+          >
             drift capacity
           </CardTitle>
           <span className="truncate font-mono text-[11px] text-muted-foreground">{subtitle}</span>
