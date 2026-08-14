@@ -22,7 +22,7 @@ export function Navbar() {
         </nav>
         <div className="ml-auto flex items-center gap-1">
           <a
-            href="https://github.com/frame-labs/kern"
+            href="https://github.com/mrestrepoj10/kern"
             target="_blank"
             rel="noreferrer"
             className="px-2 text-sm text-muted-foreground hover:text-foreground"

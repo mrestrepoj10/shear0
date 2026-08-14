@@ -30,7 +30,7 @@ import {
   type Demands,
   type WallInput,
 } from "@kern/engine";
-import { useMemo, useState, type ReactNode } from "react";
+import { memo, useMemo, useState, type ReactNode } from "react";
 import {
   XyChart,
   type ChartToken,
@@ -167,7 +167,10 @@ function build(input: WallInput): DriftView | StressView | null {
   };
 }
 
-export function DriftPanel({ input }: { input: WallInput }) {
+/** `memo` for the same reason as <InteractionChart>: the caller feeds it a
+ * deferred wall, and the 60-point capacity sweep is only worth running once the
+ * number being typed has settled. */
+export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput }) {
   const view = useMemo(() => (input.system === "special" ? build(input) : null), [input]);
   const [focus, setFocus] = useState<XyFocus<DriftMeta> | null>(null);
 
@@ -324,7 +327,7 @@ export function DriftPanel({ input }: { input: WallInput }) {
       </div>
     </Panel>
   );
-}
+});
 
 function Panel({ subtitle, children }: { subtitle: string; children: ReactNode }) {
   return (

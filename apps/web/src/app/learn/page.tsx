@@ -19,14 +19,14 @@ export default function LearnPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-16">
       <h1 className="text-2xl font-semibold tracking-tight">learn</h1>
-      <p className="mt-3 max-w-prose text-sm text-muted-foreground">
+      <p className="mt-3 max-w-prose font-sans text-sm text-muted-foreground">
         kern&rsquo;s checks are traceable: every number carries the code section, the formula and
         the substituted values that produced it. These walkthroughs are made of that. Each one runs
         the real engine on a real wall — the two MNL-17(21) handbook examples — and shows every step
         it took, expanded. Nothing on these pages is a second implementation of the code; if the
         engine changes, the lesson changes with it.
       </p>
-      <p className="mt-3 max-w-prose text-sm text-muted-foreground">
+      <p className="mt-3 max-w-prose font-sans text-sm text-muted-foreground">
         {LEARN_TOPICS.length} provisions, in the order a design goes through them.
       </p>
 
@@ -48,7 +48,9 @@ export default function LearnPage() {
                     <span className="min-w-0 flex-1 text-sm">{topic.title}</span>
                     <RefBadge refer={topic.ref} className="shrink-0" />
                   </div>
-                  <p className="text-[11px] leading-4 text-muted-foreground">{topic.blurb}</p>
+                  <p className="font-sans text-[11px] leading-4 text-muted-foreground">
+                    {topic.blurb}
+                  </p>
                 </Link>
               </li>
             ))}

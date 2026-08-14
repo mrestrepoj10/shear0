@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   description: "Shear wall design, per ACI 318-19.",
 };
 
-const REPO = "https://github.com/frame-labs/kern";
+const REPO = "https://github.com/mrestrepoj10/kern";
 
 /**
  * The engineering disclaimer, on every page. Deliberately quiet — an engineer

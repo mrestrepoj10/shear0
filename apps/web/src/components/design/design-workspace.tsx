@@ -11,12 +11,21 @@ import { ResultsPanels } from "@/components/design/results-panels";
 import { ResultsSummary, VerdictStrip } from "@/components/design/results-summary";
 import { WallCanvas } from "@/components/design/wall-canvas";
 import { useWallUrlSync } from "@/lib/url-state";
-import { WallProvider, useWallDispatch, useWallInput, useWallResult } from "@/lib/wall-state";
+import {
+  WallProvider,
+  useDeferredWallView,
+  useWallDispatch,
+  useWallInput,
+  useWallResult,
+} from "@/lib/wall-state";
 
 function Workspace() {
   const input = useWallInput();
   const dispatch = useWallDispatch();
   const { report, error } = useWallResult();
+  // The drawings and the charts render from this one; everything else below
+  // renders from `input`/`report` directly. See `useDeferredWallView`.
+  const deferred = useDeferredWallView();
   useWallUrlSync(input, dispatch);
 
   return (
@@ -35,16 +44,16 @@ function Workspace() {
         </aside>
 
         <section className="flex min-w-0 flex-col gap-3">
-          {report === null ? (
+          {report === null || deferred === null ? (
             <div className="rounded-xl border border-border p-4">
               <p className="text-sm text-status-ng">the engine could not run on these inputs</p>
               <p className="mt-2 font-mono text-[11px] text-muted-foreground">{error}</p>
             </div>
           ) : (
             <>
-              <WallCanvas input={input} report={report} />
+              <WallCanvas input={deferred.input} report={deferred.report} />
               <ResultsSummary report={report} />
-              <ResultsPanels input={input} report={report} />
+              <ResultsPanels input={input} report={report} deferred={deferred} />
             </>
           )}
         </section>
