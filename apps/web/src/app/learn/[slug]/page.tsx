@@ -77,7 +77,9 @@ export default async function LearnTopicPage({ params }: PageProps<"/learn/[slug
           <h1 className="text-2xl font-semibold tracking-tight">{topic.title}</h1>
           <RefBadge refer={topic.ref} />
         </div>
-        <p className="mt-4 max-w-prose text-sm leading-6 text-muted-foreground">{topic.summary}</p>
+        <p className="mt-4 max-w-prose font-sans text-sm leading-6 text-muted-foreground">
+          {topic.summary}
+        </p>
       </header>
 
       {topic.visual === undefined ? null : (
@@ -124,7 +126,7 @@ export default async function LearnTopicPage({ params }: PageProps<"/learn/[slug
         <h2 className="border-b border-border pb-2 font-mono text-xs tracking-tight text-foreground">
           what to look for in the trace
         </h2>
-        <ul className="mt-3 flex max-w-prose list-disc flex-col gap-2 pl-5 text-[13px] leading-5 text-muted-foreground">
+        <ul className="mt-3 flex max-w-prose list-disc flex-col gap-2 pl-5 font-sans text-[13px] leading-5 text-muted-foreground">
           {topic.notes.map((note) => (
             <li key={note}>{note}</li>
           ))}
