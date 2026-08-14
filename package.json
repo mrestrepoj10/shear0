@@ -1,12 +1,14 @@
 {
   "name": "kern",
   "private": true,
+  "license": "MIT",
   "packageManager": "pnpm@11.15.1",
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "test": "turbo test"
   },
   "devDependencies": {
     "turbo": "^2.5.0",
