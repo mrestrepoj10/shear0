@@ -94,11 +94,15 @@ export function UtilizationList({ report }: { report: WallReport }) {
                   </span>
                   <RefBadge refer={row.check.ref} className="shrink-0" />
                 </div>
-                <UtilizationBar
-                  utilization={row.utilization ?? 0}
-                  status={row.check.status}
-                  className={isGoverning ? "h-1.5" : undefined}
-                />
+                {finite ? (
+                  <UtilizationBar
+                    utilization={row.utilization}
+                    status={row.check.status}
+                    className={isGoverning ? "h-1.5" : undefined}
+                  />
+                ) : (
+                  <div className="h-1" aria-hidden="true" />
+                )}
                 <span
                   className={cn(
                     "text-right font-mono text-[11px] tabular-nums",

@@ -194,11 +194,12 @@ function CheckRow({ check }: { check: CheckResult }) {
           {ratioLine(check)}
         </span>
       </div>
-      <UtilizationBar
-        utilization={utilization ?? 0}
-        status={check.status}
-        className="mt-0.5"
-      />
+      {finite ? (
+        <UtilizationBar utilization={utilization} status={check.status} className="mt-0.5" />
+      ) : (
+        /* No ratio to draw — hold the row's height rather than imply 0%. */
+        <div className="mt-0.5 h-1" aria-hidden="true" />
+      )}
     </li>
   );
 }
