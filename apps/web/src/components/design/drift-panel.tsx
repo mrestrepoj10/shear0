@@ -233,19 +233,27 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
   if (view === null) return null;
 
   if (view.path === "stress") {
-    const status = view.required ? "ng" : "ok";
     return (
       <Panel subtitle="ACI 318-19 §18.10.6.3 — stress-based path">
-        <p className="font-mono text-[11px] leading-5 text-muted-foreground">
+        <p className="sr-only">
+          Stress-based boundary element check for load case {view.label}: the extreme-fiber
+          compressive stress is {num(view.sigma)} psi against a limit of {num(view.limit)} psi
+          (0.2f&apos;c), so special boundary elements are{" "}
+          {view.required ? "required" : "not required"}.
+        </p>
+        <p className="font-mono text-xs2 leading-5 text-muted-foreground">
           hwcs/ℓw &lt; 2.0, so the boundary element is judged by the extreme-fiber stress and Eq.
           (18.10.6.2b) does not apply — there is no width to trade against drift.
         </p>
-        <div className="flex flex-col gap-1 font-mono text-[11px]">
+        <div className="flex flex-col gap-1 font-mono text-xs2">
           <Readout label="σ" value={`${num(view.sigma)} psi`} scope={view.label} />
           <Readout label="0.2f'c" value={`${num(view.limit)} psi`} />
           <Readout label="0.15f'c — may discontinue below" value={`${num(view.discontinue)} psi`} />
         </div>
-        <p className={cn("font-mono text-[11px]", statusText(status))}>
+        {/* Neither branch is a failure: §18.10.6.3 either sends the wall to
+            special boundary elements or to 18.10.6.5, and both are valid
+            outcomes. Colouring "required" as ng said the wall was in trouble. */}
+        <p className="font-mono text-xs2 text-muted-foreground">
           {view.required
             ? "σ > 0.2f'c — special boundary elements required"
             : "σ ≤ 0.2f'c — 18.10.6.5 applies instead"}
@@ -260,6 +268,22 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
 
   return (
     <Panel subtitle="ACI 318-19 §18.10.6.2(b) — width against drift">
+      {/* The chart is one picture behind `role="img"`; these are the two
+          numbers it exists to compare, plus the answer they give. */}
+      <p className="sr-only">
+        Drift capacity swept over the boundary element width for load case {view.label}.{" "}
+        {capacity === undefined
+          ? "No boundary element is provided, so there is no capacity to compare."
+          : `At the provided width of ${num(provided, 1)} inches the capacity ratio δc/hwcs is ${capacity.toFixed(5)}${
+              view.floored ? " (the 0.015 floor)" : ""
+            }, against a required 1.5δu/hwcs of ${view.demand15.toFixed(5)} — ${
+              passes ? "the provided width passes" : "the provided width fails"
+            }.`}{" "}
+        {view.bRequired === null
+          ? `No swept width up to ${num(view.bMax, 1)} inches satisfies option (iii).`
+          : `Option (iii) is satisfied from ${num(view.bRequired, 1)} inches of width.`}
+      </p>
+
       {chart === null ? null : (
         <XyChart<DriftMeta>
           ariaLabel="drift capacity against boundary element width"
@@ -273,7 +297,7 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
         />
       )}
 
-      <p className="min-h-8 font-mono text-[11px] leading-4 text-muted-foreground">
+      <p aria-live="polite" className="min-h-8 font-mono text-xs2 leading-4 text-muted-foreground">
         {focus === null ? (
           <>
             c = {num(view.c, 2)} in · V<sub>e</sub> = {num(view.Ve)} kip · {view.label}
@@ -291,7 +315,7 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
         )}
       </p>
 
-      <div className="flex flex-col gap-1 border-t border-border pt-2 font-mono text-[11px]">
+      <div className="flex flex-col gap-1 border-t border-border pt-2 font-mono text-xs2">
         <Readout
           label="δc/hwcs at the provided b"
           value={
@@ -313,13 +337,29 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
         <Readout label="option (ii) √(0.025cℓw)" value={`${num(view.sqrtReq, 1)} in`} />
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[10px] text-muted-foreground">
-        <Swatch>δc/hwcs used</Swatch>
-        <Swatch dashed>computed · 1.5δu/hwcs demand</Swatch>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-2xs text-muted-foreground">
+        {/* Three series, three swatches. One dashed swatch used to stand for
+            two different dashed lines — the raw equation and the drift demand
+            — so the legend could not tell you which line you were reading.
+            Each swatch now draws at the width and opacity its series does. */}
+        <Swatch width={2}>δc/hwcs used</Swatch>
+        <Swatch dashed width={1.25} opacity={0.6}>
+          computed, before the floor
+        </Swatch>
+        <Swatch dashed width={1.75}>
+          1.5δu/hwcs demand
+        </Swatch>
         {provided === undefined ? null : (
           <span className="flex items-center gap-1.5">
+            {/* Same vocabulary as the marker on the plot: filled neutral when
+                the provided width works, a hollow ng ring when it does not. */}
             <span
-              className={cn("size-2 rounded-full", passes ? "bg-status-ok" : "bg-status-ng")}
+              className={cn(
+                "rounded-full",
+                passes
+                  ? "size-2 bg-foreground"
+                  : "size-2.5 border-2 border-status-ng bg-transparent",
+              )}
             />
             b provided
           </span>
@@ -334,10 +374,13 @@ function Panel({ subtitle, children }: { subtitle: string; children: ReactNode }
     <Card size="sm" className="gap-2">
       <CardHeader>
         <div className="flex items-baseline justify-between gap-2">
-          <CardTitle className="font-mono text-xs font-medium tracking-tight text-muted-foreground">
+          <CardTitle
+            render={<h2 />}
+            className="font-mono text-xs font-medium tracking-tight text-muted-foreground"
+          >
             drift capacity
           </CardTitle>
-          <span className="truncate font-mono text-[11px] text-muted-foreground">{subtitle}</span>
+          <span className="truncate font-mono text-xs2 text-muted-foreground">{subtitle}</span>
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">{children}</CardContent>
@@ -360,7 +403,7 @@ function Readout({
     <div className="flex items-baseline justify-between gap-3">
       <span className="truncate text-muted-foreground">
         {label}
-        {scope === undefined ? null : <span className="ml-1.5 text-[10px]">{scope}</span>}
+        {scope === undefined ? null : <span className="ml-1.5 text-2xs">{scope}</span>}
       </span>
       <span className={cn("shrink-0 tabular-nums", tone === undefined ? "" : statusText(tone))}>
         {value}
@@ -369,17 +412,29 @@ function Readout({
   );
 }
 
-function Swatch({ dashed, children }: { dashed?: boolean; children: ReactNode }) {
+/** A legend key drawn with the exact stroke of the series it stands for. */
+function Swatch({
+  dashed,
+  width,
+  opacity,
+  children,
+}: {
+  dashed?: boolean;
+  width: number;
+  opacity?: number;
+  children: ReactNode;
+}) {
   return (
     <span className="flex items-center gap-1.5">
-      <svg width="18" height="6" aria-hidden="true">
+      <svg width="18" height="6" aria-hidden="true" className="shrink-0">
         <line
           x1="0"
           y1="3"
           x2="18"
           y2="3"
           stroke="currentColor"
-          strokeWidth={dashed === true ? 1.5 : 2}
+          strokeWidth={width}
+          strokeOpacity={opacity}
           strokeDasharray={dashed === true ? "4 3" : undefined}
           className={dashed === true ? "text-muted-foreground" : "text-foreground"}
         />

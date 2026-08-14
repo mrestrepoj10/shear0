@@ -5,6 +5,7 @@ import { RefBadge } from "@/components/design/status";
 import { TopicVisual } from "@/components/learn/topic-visual";
 import { TraceWalkthrough } from "@/components/learn/trace-walkthrough";
 import { LEARN_TOPICS, learnTopic, type LearnCase } from "@/components/learn/topics";
+import { DISCLAIMER_SENTENCE } from "@/lib/copy";
 import { encodeWallInput } from "@/lib/wall-codec";
 import { fmt, type Demands } from "@kern/engine";
 
@@ -28,9 +29,25 @@ export async function generateMetadata({
   const { slug } = await params;
   const topic = learnTopic(slug);
   if (topic === undefined) return {};
+  const title = `${topic.title} — ACI 318-19 §${topic.ref.section}`;
+  const description = `${topic.blurb}. A step-by-step walkthrough of ACI 318-19 §${topic.ref.section}, generated from kern's own calculation trace on a worked example.`;
   return {
-    title: `${topic.title} — ACI 318-19 §${topic.ref.section}`,
-    description: `${topic.blurb}. A step-by-step walkthrough of ACI 318-19 §${topic.ref.section}, generated from kern's own calculation trace on a worked example.`,
+    title,
+    description,
+    // These nine pages are the ones people link to each other, so they are the
+    // ones that need a card. Explicit rather than inherited so the OG title
+    // carries the provision instead of the bare "kern" from the root.
+    //
+    // No `opengraph-image` yet: a generated card would want the wall drawing
+    // and the governing number rendered per topic, which is a design job of its
+    // own. Tracked as follow-up; the text card is correct in the meantime.
+    openGraph: {
+      type: "article",
+      siteName: "kern",
+      title,
+      description,
+      url: `/learn/${topic.slug}`,
+    },
   };
 }
 
@@ -47,7 +64,7 @@ function DesignerLink({ item }: { item: LearnCase }) {
   return (
     <Link
       href={`/design?w=${encodeWallInput(item.input)}`}
-      className="inline-flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+      className="inline-flex items-center gap-1.5 font-mono text-xs2 text-muted-foreground underline underline-offset-2 transition-colors duration-150 hover:text-foreground"
     >
       open this example in the designer
       <span aria-hidden="true">→</span>
@@ -67,17 +84,17 @@ export default async function LearnTopicPage({ params }: PageProps<"/learn/[slug
     <article className="mx-auto max-w-5xl px-4 py-16">
       <Link
         href="/learn"
-        className="font-mono text-[11px] text-muted-foreground hover:text-foreground"
+        className="font-mono text-xs2 text-muted-foreground transition-colors duration-150 hover:text-foreground"
       >
         ← learn
       </Link>
 
       <header className="mt-3">
         <div className="flex flex-wrap items-baseline gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">{topic.title}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-balance">{topic.title}</h1>
           <RefBadge refer={topic.ref} />
         </div>
-        <p className="mt-4 max-w-prose font-sans text-sm leading-6 text-muted-foreground">
+        <p className="mt-4 max-w-prose font-sans text-pretty text-sm leading-6 text-muted-foreground">
           {topic.summary}
         </p>
       </header>
@@ -94,16 +111,18 @@ export default async function LearnTopicPage({ params }: PageProps<"/learn/[slug
       )}
 
       {cases.map(({ item, check }) => (
-        <section key={item.id} id={item.id} className="mt-10 min-w-0">
+        // `scroll-mt-16`: the header is sticky and 48 px tall, so a deep link
+        // to a case has to clear it.
+        <section key={item.id} id={item.id} className="mt-10 min-w-0 scroll-mt-16">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border pb-2">
-            <h2 className="font-mono text-xs tracking-tight text-foreground">{item.label}</h2>
+            <h2 className="font-mono text-xs tracking-tight text-balance text-foreground">{item.label}</h2>
             {item.demand === undefined ? null : (
-              <span className="font-mono text-[11px] text-muted-foreground">
+              <span className="font-mono text-xs2 text-muted-foreground">
                 {demandLine(item.demand)}
               </span>
             )}
           </div>
-          <p className="mt-2 max-w-prose text-[11px] leading-4 text-muted-foreground">
+          <p className="mt-2 max-w-prose text-xs2 leading-4 text-muted-foreground">
             {item.caption}
           </p>
 
@@ -123,20 +142,19 @@ export default async function LearnTopicPage({ params }: PageProps<"/learn/[slug
       ))}
 
       <section className="mt-10">
-        <h2 className="border-b border-border pb-2 font-mono text-xs tracking-tight text-foreground">
+        <h2 className="border-b border-border pb-2 font-mono text-xs tracking-tight text-balance text-foreground">
           what to look for in the trace
         </h2>
-        <ul className="mt-3 flex max-w-prose list-disc flex-col gap-2 pl-5 font-sans text-[13px] leading-5 text-muted-foreground">
+        <ul className="mt-3 flex max-w-prose list-disc flex-col gap-2 pl-5 font-sans text-sm2 leading-5 text-muted-foreground">
           {topic.notes.map((note) => (
             <li key={note}>{note}</li>
           ))}
         </ul>
       </section>
 
-      <p className="mt-10 max-w-prose font-mono text-[11px] text-muted-foreground">
+      <p className="mt-10 max-w-prose font-mono text-xs2 text-muted-foreground">
         every step above is the engine&rsquo;s own output — kern does not restate the code in prose
-        and then compute it separately. Output requires review by a licensed engineer and is not
-        engineering advice.
+        and then compute it separately. {DISCLAIMER_SENTENCE}
       </p>
     </article>
   );

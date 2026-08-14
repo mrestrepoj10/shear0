@@ -19,7 +19,7 @@ import { WallElevation } from "@/components/design/drawing/elevation";
 import { dim } from "@/components/design/drawing/format";
 import { WallPlanSection } from "@/components/design/drawing/plan-section";
 import { StrainProfile } from "@/components/design/drawing/strain-profile";
-import { statusText } from "@/components/design/status";
+import { STATUS_LABEL, statusText } from "@/components/design/status";
 import { cn } from "@/lib/utils";
 
 export interface WallCanvasProps {
@@ -57,11 +57,16 @@ function Plate({
   className?: string;
 }) {
   return (
-    <figure className={cn("min-w-0 rounded-xl border border-border p-4", className)}>
+    /* One surface system: `Card`'s ring, not a border of its own. The two
+       treatments happened to look alike in light because `--border` and
+       `--foreground/10` land in the same place there; in dark a card sits at
+       oklch 0.205 and a bordered plate sat flat on 0.145, so two peer panels in
+       one column were visibly different objects. See `ui/card.tsx`. */
+    <figure className={cn("min-w-0 rounded-xl bg-card p-4 ring-1 ring-foreground/10", className)}>
       <figcaption className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 pb-3">
-        <span className="font-mono text-[11px] tracking-tight text-foreground">{title}</span>
+        <span className="font-mono text-xs2 tracking-tight text-foreground">{title}</span>
         {note === undefined ? null : (
-          <span className="font-mono text-[11px] tracking-tight text-muted-foreground">{note}</span>
+          <span className="font-mono text-xs2 tracking-tight text-muted-foreground">{note}</span>
         )}
       </figcaption>
       {children}
@@ -87,9 +92,12 @@ export const WallCanvas = memo(function WallCanvas({ input, report }: WallCanvas
         note={`ℓw ${dim(geometry.lw)} × h ${dim(geometry.h)} in · true scale · bars enlarged`}
       >
         <WallPlanSection input={input} />
-        <p className="pt-2 font-mono text-[11px] text-muted-foreground">
+        {/* `STATUS_LABEL`, not the raw enum: the caption used to read "— na
+            overall", which is a variable name, not a sentence. */}
+        <p className="pt-2 font-mono text-xs2 text-muted-foreground">
           hover or tab a station for its bars —{" "}
-          <span className={cn(statusText(report.status))}>{report.status}</span> overall
+          <span className={cn(statusText(report.status))}>{STATUS_LABEL[report.status]}</span>{" "}
+          overall
         </p>
       </Plate>
 
@@ -107,7 +115,7 @@ export const WallCanvas = memo(function WallCanvas({ input, report }: WallCanvas
           }
         >
           {governing === null ? (
-            <p className="py-6 text-center font-mono text-[11px] text-muted-foreground">
+            <p className="py-6 text-center font-mono text-xs2 text-muted-foreground">
               add a load case to see the governing slice
             </p>
           ) : (

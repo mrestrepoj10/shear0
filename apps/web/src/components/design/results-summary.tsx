@@ -85,26 +85,69 @@ export function checkTitle(title: string): string {
   return title.toLowerCase().replace(/\bp–m\b/g, "P–M").replace(/\baci\b/g, "ACI");
 }
 
-const VERDICT_TEXT: Record<CheckStatus, string> = {
+/**
+ * The verdict sentence for every outcome that is not a failure. `ng` is absent
+ * on purpose: a failing wall says *how many* checks failed, and "check fails"
+ * was singular however many did.
+ */
+const VERDICT_TEXT: Record<Exclude<CheckStatus, "ng">, string> = {
   ok: "all checks pass",
-  ng: "check fails",
   warning: "passes with warnings",
   na: "nothing to check",
 };
+
+function failingCount(report: WallReport): number {
+  const failing = (checks: CheckResult[]) => checks.filter((c) => c.status === "ng").length;
+  return (
+    failing(report.general) + report.perDemand.reduce((n, group) => n + failing(group.checks), 0)
+  );
+}
+
+/**
+ * A wall carrying no load at all: every check that needs a demand passes on
+ * zero, and the strip used to call that "ok — all checks pass". It is not a
+ * passing design, it is an unasked question, so it reads as n/a and says what
+ * to do. The rows below stay exactly as the engine computed them.
+ */
+function hasNoLoads(report: WallReport): boolean {
+  return report.perDemand.every(
+    ({ demand }) =>
+      demand.Pu === 0 &&
+      demand.Mu === 0 &&
+      demand.Vu === 0 &&
+      (demand.MuOut ?? 0) === 0 &&
+      (demand.VuOut ?? 0) === 0,
+  );
+}
 
 export function VerdictStrip({ report }: { report: WallReport }) {
   const governing = governingCheck(report);
   const total =
     report.general.length + report.perDemand.reduce((n, group) => n + group.checks.length, 0);
+  // A real failure always wins the strip: an ng that does not depend on the
+  // demands (detailing, ρ_min) is still an ng, loads or no loads.
+  const unloaded = report.status !== "ng" && hasNoLoads(report);
+  const status = unloaded ? "na" : report.status;
+  const failing = failingCount(report);
+  const verdict = unloaded
+    ? "no loads applied — enter a load case"
+    : report.status === "ng"
+      ? `${failing} check${failing === 1 ? "" : "s"} ${failing === 1 ? "fails" : "fail"}`
+      : VERDICT_TEXT[report.status];
 
   return (
-    <div className="sticky top-12 z-30 -mx-4 border-b border-border bg-background/85 px-4 py-2.5 backdrop-blur">
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+    /* `bleed-inline` replaces the flat `px-4`: the strip is pulled full-bleed
+       by `-mx-4`, so on a notched phone in landscape the verdict would sit
+       under the cutout. */
+    <div className="bleed-inline sticky top-12 z-30 -mx-4 border-b border-border bg-background/85 py-2.5 backdrop-blur">
+      {/* The verdict is the one thing on the page that changes without being
+          touched — every keystroke anywhere can flip it. The live region is
+          this row, which is always mounted and always one line tall, so a flip
+          re-announces the sentence instead of the container's arrival. */}
+      <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <div className="flex items-center gap-2">
-          <StatusBadge status={report.status} className="h-6 px-2 text-xs" />
-          <span className={cn("text-sm", statusText(report.status))}>
-            {VERDICT_TEXT[report.status]}
-          </span>
+          <StatusBadge status={status} className="h-6 px-2 text-xs" />
+          <span className={cn("text-sm", statusText(status))}>{verdict}</span>
           <span className="text-xs text-muted-foreground">
             {total} check{total === 1 ? "" : "s"}
           </span>
@@ -112,14 +155,24 @@ export function VerdictStrip({ report }: { report: WallReport }) {
         {governing === null ? null : (
           <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
             <span className="shrink-0">governing</span>
-            <span className="truncate text-foreground">
+            {/* The title is the sentence; the ref is a footnote to it. At 390 px
+                the strip used to spend its width on the badge and clip the name
+                of the check driving the design, so the ref steps aside first. */}
+            <span
+              className="min-w-0 truncate text-foreground"
+              title={`${checkTitle(governing.check.title)}${
+                governing.demand === null
+                  ? ""
+                  : ` · ${governing.demand.label ?? governing.demand.id}`
+              }`}
+            >
               {checkTitle(governing.check.title)}
               {governing.demand === null
                 ? ""
                 : ` · ${governing.demand.label ?? governing.demand.id}`}
             </span>
-            <RefBadge refer={governing.check.ref} />
-            <span className={cn("tabular-nums", statusText(governing.check.status))}>
+            <RefBadge refer={governing.check.ref} className="hidden shrink-0 sm:inline-flex" />
+            <span className={cn("shrink-0 tabular-nums", statusText(governing.check.status))}>
               {fmt(governing.utilization, { dp: 2 })}
             </span>
           </div>
@@ -153,7 +206,11 @@ function CheckRow({ check }: { check: CheckResult }) {
     <li className="flex flex-col gap-1.5 border-b border-border px-3 py-2.5 last:border-b-0">
       <div className="flex items-center gap-2">
         <StatusBadge status={check.status} />
-        <span className="min-w-0 flex-1 truncate text-sm">{checkTitle(check.title)}</span>
+        {/* Truncation with no recovery: at 1024 px these clip to ~16 characters
+            and the full name was nowhere on the page. */}
+        <span className="min-w-0 flex-1 truncate text-sm" title={checkTitle(check.title)}>
+          {checkTitle(check.title)}
+        </span>
         <RefBadge refer={check.ref} />
         <span
           className={cn(
@@ -165,15 +222,16 @@ function CheckRow({ check }: { check: CheckResult }) {
         </span>
       </div>
       <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate font-mono text-xs2 text-muted-foreground">
           {ratioLine(check)}
         </span>
       </div>
-      <UtilizationBar
-        utilization={utilization ?? 0}
-        status={check.status}
-        className="mt-0.5"
-      />
+      {finite ? (
+        <UtilizationBar utilization={utilization} status={check.status} className="mt-0.5" />
+      ) : (
+        /* No ratio to draw — hold the row's height rather than imply 0%. */
+        <div className="mt-0.5 h-1" aria-hidden="true" />
+      )}
     </li>
   );
 }
@@ -182,20 +240,26 @@ function CheckList({
   title,
   subtitle,
   checks,
+  heading,
 }: {
   title: string;
   subtitle?: string;
   checks: CheckResult[];
+  /** h2 for the wall-level list, h3 for the load cases nested under it */
+  heading: "h2" | "h3";
 }) {
   return (
     <Card size="sm" className="gap-2">
       <CardHeader>
         <div className="flex items-baseline justify-between gap-2">
-          <CardTitle className="font-mono text-xs font-medium tracking-tight text-muted-foreground">
+          <CardTitle
+            render={heading === "h2" ? <h2 /> : <h3 />}
+            className="font-mono text-xs font-medium tracking-tight text-muted-foreground"
+          >
             {title}
           </CardTitle>
           {subtitle === undefined ? null : (
-            <span className="truncate font-mono text-[11px] text-muted-foreground">{subtitle}</span>
+            <span className="truncate font-mono text-xs2 text-muted-foreground">{subtitle}</span>
           )}
         </div>
       </CardHeader>
@@ -222,13 +286,14 @@ function demandSummary(demand: Demands): string {
 export function ResultsSummary({ report }: { report: WallReport }) {
   return (
     <div className="flex flex-col gap-3">
-      <CheckList title="wall" checks={report.general} />
+      <CheckList title="wall" checks={report.general} heading="h2" />
       {report.perDemand.map((group) => (
         <CheckList
           key={group.demand.id}
           title={group.demand.label ?? group.demand.id}
           subtitle={demandSummary(group.demand)}
           checks={group.checks}
+          heading="h3"
         />
       ))}
     </div>

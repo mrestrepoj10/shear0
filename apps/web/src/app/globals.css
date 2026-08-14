@@ -10,19 +10,6 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
   --color-status-ok: var(--status-ok);
   --color-status-ng: var(--status-ng);
   --color-ring: var(--ring);
@@ -41,6 +28,15 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  /*
+   * The three sizes the chrome actually uses below `text-xs`, registered so
+   * they are part of the scale instead of 72 ad-hoc `text-[Npx]` brackets.
+   * Deliberately no `--text-*--line-height`: the bracket sizes never set one
+   * either, so leading keeps inheriting from the row and nothing reflows.
+   */
+  --text-2xs: 0.625rem;
+  --text-xs2: 0.6875rem;
+  --text-sm2: 0.8125rem;
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -68,24 +64,23 @@
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  /* The only two hues in the app. Reserved for check outcomes — never chrome. */
+  /* 0.708 measured 2.58:1 against the white background — a focus ring nobody
+     could see. 0.55 is 4.6:1, past the 3:1 floor for a non-text indicator. */
+  --ring: oklch(0.55 0 0);
+  /*
+   * The only hues in the app, and only one of them is spent.
+   *
+   * `--status-ng` is the app's single saturated color: a wall that fails is the
+   * one thing worth interrupting a reading for. `--status-ok` is deliberately
+   * *reserved* — passing renders neutral (`text-foreground`, `bg-foreground/70`),
+   * because a colour every row carries answers nothing, and ok/ng separate by
+   * only 1.21:1 under deuteranopia. Kept defined so a future surface that needs
+   * an affirmative accent has a vetted one to reach for; do not delete it, and
+   * do not reintroduce it as the paint for "this check passed".
+   */
   --status-ok: oklch(0.52 0.1 155);
   --status-ng: oklch(0.55 0.19 27);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
 }
 
 .dark {
@@ -100,28 +95,19 @@
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
+  /* 0.708 measured APCA Lc −51 on the dark background — under the floor for the
+     small non-body text this token mostly paints (refs, scopes, readouts).
+     0.76 clears it; chroma and hue stay at 0 so the greys stay grey. */
+  --muted-foreground: oklch(0.76 0 0);
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  /* Reserved, as in `:root` — dark's failure red, and an unspent affirmative. */
   --status-ok: oklch(0.76 0.13 155);
   --status-ng: oklch(0.71 0.18 24);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
 }
 
 @layer base {
@@ -130,8 +116,143 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* No 300 ms double-tap delay; zoom is still available via pinch. */
+    touch-action: manipulation;
   }
   html {
     @apply font-sans;
+  }
+}
+
+/**
+ * KaTeX sizing.
+ *
+ * KaTeX ships `.katex { font-size: 1.21em }` so that stock-sized math sits
+ * comfortably in body copy. In a trace row the symbol and the number it equals
+ * are one sentence, and 1.21em made the symbol 31% larger than its own value
+ * (15.73 px beside 13 px). At 1em the two read as one size; display math keeps
+ * a hair of emphasis because it owns its line.
+ *
+ * Deliberately **not** in `@layer base`: `katex/dist/katex.min.css` is imported
+ * from `tex.tsx` as a plain stylesheet, so its rules are unlayered — and an
+ * unlayered rule beats every layered one whatever its specificity. Measured:
+ * inside `@layer base` these had no effect at all (`.katex` still computed
+ * 15.73 px). Unlayered and with the `html` prefix they outrank `.katex` on
+ * specificity too, so neither cascade layer nor file order can undo them.
+ */
+html .katex {
+  font-size: 1em;
+}
+.katex-display > .katex {
+  font-size: 1.05em;
+}
+
+/**
+ * Deferred rendering for the learn walkthroughs.
+ *
+ * `/learn/sbe-detailing` is 11,971 elements — 192 KaTeX instances, every
+ * `<details>` server-rendered `open`, because the whole derivation *is* the
+ * page. The HTML is cheap (48.6 KB gz); the style and layout passes over that
+ * tree are not, and the reader can see one screen of it.
+ *
+ * `content-visibility: auto` is the exact tool: the box keeps its place in the
+ * document — same DOM, same node count, still findable, still printable, still
+ * reachable by anchor and by find-in-page, which is what the `<details open>`
+ * decision was for — but the engine skips styling and laying out its subtree
+ * until it comes near the viewport, and re-skips it when it leaves. The
+ * `contain-intrinsic-size` is the placeholder height used while skipped, and
+ * `auto` tells the engine to replace that guess with the real height once the
+ * box has been rendered a first time.
+ *
+ * Containment sits on the *rows*, never on a `<li>` or a `<details>`. A trace
+ * node's subtree is 138 to 8,474 px tall, so no honest number describes it, and
+ * a guessed container height moves everything below it — which is how
+ * `content-visibility` breaks a deep `#anchor` link. A row is a different kind
+ * of box: measured on sbe-detailing, all 128 of them are exactly 30 px tall,
+ * and the 54 math blocks run 74–140 px with a mean of 98.9. Those two classes
+ * carry 11,352 of the page's 11,971 elements, so the containment covers 95% of
+ * the tree while the page height stays a sum of accurate numbers.
+ *
+ * The numbers below are those measurements minus each box's own `py-1`
+ * (8 px): `contain-intrinsic-size` describes the *content* box, and the
+ * padding is added back on top of it. Getting that wrong is not cosmetic —
+ * counting the padding twice added 1,140 px of phantom scroll height to
+ * sbe-detailing.
+ */
+.trace-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 22px;
+}
+
+.trace-body {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 90px;
+}
+
+/**
+ * Full-bleed rows: the verdict strip and the footer run edge to edge, so in
+ * landscape on a notched phone their text can sit under the cutout. `max()`
+ * keeps the existing 1 rem everywhere the inset is zero, which is everywhere
+ * but that case.
+ */
+.bleed-inline {
+  padding-inline: max(1rem, env(safe-area-inset-left)) max(1rem, env(safe-area-inset-right));
+}
+
+/**
+ * Bar-station hover, in the plan section — the app's signature interaction.
+ *
+ * `r` is a presentation attribute *and* a CSS property, so the dot can grow
+ * rather than jump ×1.75 between two frames; the readout and its crosshair
+ * arrive on the same 130 ms. Written here rather than inline so the global
+ * reduced-motion block below reaches all three.
+ *
+ * Gated on a fine pointer with real hover, and deliberately gating *motion
+ * only*: on touch the tap is the only path to the readout (that is what the
+ * 24 px hit floor exists for), so the state itself is never gated — a coarse
+ * pointer gets the same readout, instantly. Keyboard focus drives exactly the
+ * same states through `focused`, so it is never gated away either.
+ */
+@media (hover: hover) and (pointer: fine) {
+  .station-bar {
+    transition: r 130ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  .station-fade {
+    animation: station-fade-in 130ms ease-out;
+  }
+  .station-readout {
+    animation: station-readout-in 130ms ease-out;
+  }
+}
+
+@keyframes station-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes station-readout-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}
+
+/**
+ * One global reduce block, ahead of the motion work.
+ *
+ * It only *shortens* durations — it never introduces a transition — so
+ * next-themes' `disableTransitionOnChange` (which injects `* { transition:
+ * none !important }` into <head> at swap time, later in the cascade than this
+ * sheet) still wins and the theme swap stays smear-free.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

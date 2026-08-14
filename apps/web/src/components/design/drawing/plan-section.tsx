@@ -29,7 +29,7 @@ import {
   type SbeProvided,
   type WallInput,
 } from "@kern/engine";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSetSelection } from "@/lib/wall-state";
 import { DimLine } from "./dim-line";
 import { Drawing, HAIRLINE, Note, fitScale, paddedViewBox } from "./drawing";
@@ -40,6 +40,11 @@ const MAX_WALL_H = 150;
 const PAD = { top: 96, right: 154, bottom: 86, left: 84 };
 const BAR_MIN_R = 3.6;
 const FONT = 11;
+/**
+ * Smallest hit target, in CSS pixels, at any viewport — with half a pixel of
+ * slack so sub-pixel layout rounding can never land the rendered rect under 24.
+ */
+const MIN_HIT_PX = 24.5;
 
 /**
  * The strip each end-zone group owns, mirroring the rule `barPositions` uses to
@@ -61,20 +66,37 @@ function endZoneReach(w: WallInput): number {
   return reach;
 }
 
+/** which input row put a station at this x */
+export type StationSource = "endZone" | "vertical";
+
 interface Station extends BarStation {
-  /** which input row put this station here */
-  source: "endZone" | "vertical";
+  source: StationSource;
   /** bars at this station across all curtains */
   count: number;
   bar: BarSize;
+}
+
+function sourceAt(w: WallInput, x: number, reach: number): StationSource {
+  const nearEnd = x <= reach + 1e-6 || x >= w.geometry.lw - reach - 1e-6;
+  return nearEnd && w.endZone?.bar !== undefined ? "endZone" : "vertical";
+}
+
+/**
+ * Which reinforcement row produced the bar at this x — the one thing a consumer
+ * of a `bar-station` selection needs to know, exported so nothing has to
+ * re-derive it. The station positions themselves are always the engine's
+ * (`barPositions`); only the end-zone *reach* is geometry, and it lives in
+ * exactly one place, above.
+ */
+export function stationSourceAt(w: WallInput, x: number): StationSource {
+  return sourceAt(w, x, endZoneReach(w));
 }
 
 function resolveStations(w: WallInput): Station[] {
   const reach = endZoneReach(w);
   const ezBar = w.endZone?.bar;
   return barPositions(w).map((st) => {
-    const nearEnd = st.x <= reach + 1e-6 || st.x >= w.geometry.lw - reach - 1e-6;
-    const source: Station["source"] = nearEnd && ezBar !== undefined ? "endZone" : "vertical";
+    const source = sourceAt(w, st.x, reach);
     const bar = source === "endZone" && ezBar !== undefined ? ezBar : w.vertical.bar;
     return { ...st, source, bar, count: Math.max(1, Math.round(st.area / BARS[bar].Ab)) };
   });
@@ -158,17 +180,60 @@ function sbeLayout(sbe: SbeProvided, cover: number, worldH: number): SbeLayout {
 
 export function WallPlanSection({ input }: { input: WallInput }) {
   const setSelection = useSetSelection();
-  const [active, setActive] = useState<number | null>(null);
+  // Hover and keyboard focus are two different things: hovering away from a
+  // station the keyboard is still sitting on must not take its highlight with
+  // it. Focus wins where both are set.
+  const [hovered, setHovered] = useState<number | null>(null);
+  const [focused, setFocused] = useState<number | null>(null);
   const [cursor, setCursor] = useState(0);
+  /** rendered width of the <svg> in CSS px — 0 until it has been measured */
+  const [renderedWidth, setRenderedWidth] = useState(0);
   const nodes = useRef<Array<SVGGElement | null>>([]);
+
+  /**
+   * The hit rects are sized in canvas units, so the only way to promise 24 CSS
+   * pixels at 375 px as well as at 1440 is to know what one canvas unit is
+   * currently worth. React 19 cleans up ref callbacks that return a function,
+   * so this survives the early return below as well as any remount.
+   */
+  const measure = useCallback((node: SVGSVGElement | null) => {
+    if (node === null) return;
+    const read = () => setRenderedWidth(node.getBoundingClientRect().width);
+    const observer = new ResizeObserver(read);
+    observer.observe(node);
+    read();
+    return () => observer.disconnect();
+  }, []);
 
   const { geometry, vertical, horizontal, endZone } = input;
   const { lw, h, cover } = geometry;
   const stations = resolveStations(input);
 
+  // Shrinking the station count (a coarser spacing, a dropped end zone) must
+  // never leave the cursor past the end — that is how the drawing used to go
+  // permanently untabbable after `End`. Clamped at render, refs truncated with
+  // it, so exactly one station is always tabbable.
+  const count = stations.length;
+  const cursorAt = count === 0 ? 0 : Math.min(Math.max(cursor, 0), count - 1);
+  const activeIndex = focused ?? hovered;
+  const active = activeIndex !== null && activeIndex < count ? activeIndex : null;
+
+  // The published selection follows whatever is active — by x, so the effect
+  // does not re-fire on every fresh `stations` array.
+  const activeX = active === null ? null : (stations[active]?.x ?? null);
+  useEffect(() => {
+    setSelection(activeX === null ? null : { kind: "bar-station", x: activeX });
+  }, [activeX, setSelection]);
+
+  // Refs are keyed by position, so a shorter list has to shorten the array too
+  // — after the ref callbacks have run, not during render.
+  useEffect(() => {
+    nodes.current.length = count;
+  }, [count]);
+
   if (!(lw > 0) || !(h > 0)) {
     return (
-      <p className="py-6 text-center font-mono text-[11px] text-muted-foreground">
+      <p className="py-6 text-center font-mono text-xs2 text-muted-foreground">
         plan section needs ℓw and h greater than zero
       </p>
     );
@@ -203,27 +268,34 @@ export function WallPlanSection({ input }: { input: WallInput }) {
   const layout = sbe === undefined ? null : sbeLayout(sbe, cover, worldH);
   const sbeR = sbe === undefined ? 0 : Math.max(X(BARS[sbe.longBar].db / 2), BAR_MIN_R * 0.85);
 
-  function select(index: number | null) {
-    setActive(index);
-    const st = index === null ? undefined : stations[index];
-    setSelection(st === undefined ? null : { kind: "bar-station", x: st.x });
-  }
-
   function moveTo(index: number) {
-    const clamped = Math.max(0, Math.min(stations.length - 1, index));
+    const clamped = Math.max(0, Math.min(count - 1, index));
     setCursor(clamped);
-    select(clamped);
+    setFocused(clamped);
     nodes.current[clamped]?.focus();
   }
 
-  // Hit target width: half the gap to the nearer neighbour, within reason.
+  /**
+   * One canvas unit, in CSS pixels, at the size this drawing is actually being
+   * rendered — the SVG is `w-full` with a uniform viewBox, so the whole
+   * viewBox width maps onto the measured width. 0 until the first measurement.
+   */
+  const viewBoxWidth = W + PAD.left + PAD.right;
+  const renderScale = renderedWidth > 0 ? renderedWidth / viewBoxWidth : 0;
+  /** the canvas width that buys MIN_HIT_PX on screen */
+  const minHit = renderScale > 0 ? MIN_HIT_PX / renderScale : 0;
+
+  // Hit target width: half the gap to the nearer neighbour, within reason —
+  // then floored so that a station is never smaller than a fingertip. At
+  // 375 px with 29 stations the floor is what does the work.
   function hitWidth(i: number): number {
     const prev = stations[i - 1];
     const next = stations[i + 1];
     const here = stations[i].x;
     const gaps = [prev ? here - prev.x : Infinity, next ? next.x - here : Infinity];
     const gap = Math.min(...gaps);
-    return Math.max(9, Math.min(26, Number.isFinite(gap) ? X(gap) * 0.9 : 26));
+    const natural = Math.max(9, Math.min(26, Number.isFinite(gap) ? X(gap) * 0.9 : 26));
+    return Math.max(natural, minHit);
   }
 
   const typicalAt = Math.max(1, Math.floor(stations.length / 2));
@@ -238,6 +310,7 @@ export function WallPlanSection({ input }: { input: WallInput }) {
 
   return (
     <Drawing
+      ref={measure}
       viewBox={paddedViewBox({ width: W, height: HT }, PAD)}
       fontSize={FONT}
       role="group"
@@ -437,8 +510,13 @@ export function WallPlanSection({ input }: { input: WallInput }) {
       <g>
         {stations.map((st, i) =>
           curtains.map((y, c) => (
+            /* `r` is a CSS-animatable geometry property, so the station grows
+               instead of jumping ×1.75 between two frames. The class carries
+               the transition (see `globals.css`), which is also how the global
+               reduced-motion block reaches it. */
             <circle
               key={`bar-${st.x}-${c}`}
+              className="station-bar"
               cx={X(st.x)}
               cy={y}
               r={active === i ? barR * 1.75 : barR}
@@ -538,23 +616,32 @@ export function WallPlanSection({ input }: { input: WallInput }) {
         </Note>
       )}
 
-      {/* interaction layer, last so hit areas and the readout sit on top */}
+      {/* Interaction layer, last so hit areas and the readout sit on top.
+
+          The stations are selectable data points, not actions: nothing happens
+          on Enter, and announcing 29 "buttons" that do nothing was the lie. A
+          listbox of options with a roving tabindex says what they are — one
+          tab stop, arrows to walk them, Escape to let go. */}
       <g
+        role="listbox"
+        aria-label={`vertical bar stations — ${count} across the ${dim(lw)} inch wall`}
+        aria-orientation="horizontal"
         onKeyDown={(event) => {
           if (event.key === "ArrowRight" || event.key === "ArrowDown") {
             event.preventDefault();
-            moveTo(cursor + 1);
+            moveTo(cursorAt + 1);
           } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
             event.preventDefault();
-            moveTo(cursor - 1);
+            moveTo(cursorAt - 1);
           } else if (event.key === "Home") {
             event.preventDefault();
             moveTo(0);
           } else if (event.key === "End") {
             event.preventDefault();
-            moveTo(stations.length - 1);
+            moveTo(count - 1);
           } else if (event.key === "Escape") {
-            select(null);
+            setFocused(null);
+            setHovered(null);
           }
         }}
       >
@@ -566,19 +653,20 @@ export function WallPlanSection({ input }: { input: WallInput }) {
               ref={(node) => {
                 nodes.current[i] = node;
               }}
-              tabIndex={i === cursor ? 0 : -1}
-              role="button"
+              tabIndex={i === cursorAt ? 0 : -1}
+              role="option"
+              aria-selected={active === i}
               aria-label={`bar station at ${dim(st.x)} inches, ${st.count} number ${st.bar} ${
                 st.source === "endZone" ? "end-zone" : "distributed"
               } bars, ${dim(st.area)} square inches`}
               className="cursor-pointer focus:outline-none"
-              onMouseEnter={() => select(i)}
-              onMouseLeave={() => select(null)}
+              onMouseEnter={() => setHovered(i)}
+              onMouseLeave={() => setHovered((prev) => (prev === i ? null : prev))}
               onFocus={() => {
                 setCursor(i);
-                select(i);
+                setFocused(i);
               }}
-              onBlur={() => select(null)}
+              onBlur={() => setFocused((prev) => (prev === i ? null : prev))}
             >
               <rect
                 x={X(st.x) - width / 2}
@@ -594,7 +682,7 @@ export function WallPlanSection({ input }: { input: WallInput }) {
                   x2={X(st.x)}
                   y2={webBot + 8}
                   stroke="currentColor"
-                  className="opacity-70"
+                  className="station-fade opacity-70"
                   {...HAIRLINE}
                 />
               ) : null}
@@ -634,7 +722,9 @@ function StationReadout({
   const by = -18 - boxH;
 
   return (
-    <g aria-hidden="true" pointerEvents="none">
+    /* Enters with the station it belongs to: opacity 0→1 and 2 px of travel in
+       130 ms, so the box arrives instead of appearing. */
+    <g aria-hidden="true" pointerEvents="none" className="station-readout">
       <line x1={x} y1={-8} x2={x} y2={by + boxH} stroke="currentColor" className="opacity-50" {...HAIRLINE} />
       <rect
         x={bx}

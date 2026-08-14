@@ -26,12 +26,14 @@ import {
   type WallInput,
 } from "@kern/engine";
 import { Check, ChevronRight, Copy } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Tex } from "@/components/design/tex";
 import { checkTitle } from "@/components/design/results-summary";
 import { RefBadge, StatusBadge, statusText } from "@/components/design/status";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { notify } from "@/components/ui/sonner";
+import { DISCLAIMER_SENTENCE } from "@/lib/copy";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -164,7 +166,19 @@ function CopyButton({
 
   const onCopy = useCallback(() => {
     void writeClipboard(markdown()).then((ok) => {
-      if (ok) setCopied(true);
+      // Success stays here, at the button — nine copy buttons share this page
+      // and a toast apiece would be noise. Failure has nowhere else to go: the
+      // shared id keeps a repeated click replacing one toast, not stacking.
+      if (ok) {
+        setCopied(true);
+        return;
+      }
+      notify({
+        id: "clipboard-failed",
+        title: "couldn't copy to the clipboard",
+        description: "your browser blocked clipboard access — select the report and copy manually",
+        duration: 6000,
+      });
     });
   }, [markdown]);
 
@@ -173,11 +187,35 @@ function CopyButton({
       variant="ghost"
       size="xs"
       onClick={onCopy}
-      className={cn("font-mono text-[11px] text-muted-foreground", className)}
+      className={cn("font-mono text-xs2 text-muted-foreground", className)}
       aria-label={aria ?? label}
     >
-      {copied ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
-      {copied ? "copied" : label}
+      {/*
+        Both labels live in one grid cell, so the button is always as wide as
+        the longer of them and the swap costs no layout at all: "copy full
+        report" → "copied" used to take the button from 137 px to 72 px and
+        snap back 1.6 s later, reflowing the row under it twice. The two states
+        cross over in opacity and a 2 px blur instead — nothing moves.
+      */}
+      <span
+        data-icon="inline-start"
+        className="grid *:col-start-1 *:row-start-1 *:transition-[opacity,filter] *:duration-200 *:ease-out"
+      >
+        <span
+          aria-hidden={copied}
+          className={cn("inline-flex items-center gap-1", copied && "opacity-0 blur-[2px]")}
+        >
+          <Copy />
+          {label}
+        </span>
+        <span
+          aria-hidden={!copied}
+          className={cn("inline-flex items-center gap-1", !copied && "opacity-0 blur-[2px]")}
+        >
+          <Check />
+          copied
+        </span>
+      </span>
     </Button>
   );
 }
@@ -200,6 +238,9 @@ function TraceRow({
   // The check root opens one level; everything deeper starts closed.
   const expanded = overrides[view.path] ?? view.depth === 0;
   const showMath = expanded && (node.formula !== undefined || node.substitution !== undefined);
+  // The list of inputs this row expands. The <ul> stays mounted (empty when
+  // collapsed) so `aria-controls` always points at something real.
+  const inputsId = useId();
 
   return (
     <li className={cn(view.depth > 0 && "border-l border-border pl-3")}>
@@ -209,10 +250,18 @@ function TraceRow({
             type="button"
             onClick={() => onToggle(view.path, !expanded)}
             aria-expanded={expanded}
-            className="-ml-1 flex size-4 shrink-0 translate-y-0.5 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+            aria-controls={inputsId}
+            /* 24 × 24 of target around a 12 px glyph. The negative margins give
+               the layout back exactly the 12 px the old size-4 box occupied, so
+               the row keeps its rhythm and the chevron does not move. */
+            className="-my-1 -mr-1 -ml-2 flex size-6 shrink-0 translate-y-0.5 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
           >
             <ChevronRight
-              className={cn("size-3 transition-transform", expanded && "rotate-90")}
+              strokeWidth={1.5}
+              className={cn(
+                "size-3 transition-transform duration-120 ease-out",
+                expanded && "rotate-90",
+              )}
               aria-hidden="true"
             />
             <span className="sr-only">{expanded ? "collapse" : "expand"}</span>
@@ -221,17 +270,17 @@ function TraceRow({
           <span className="-ml-1 size-4 shrink-0" aria-hidden="true" />
         )}
 
-        <span className="shrink-0 text-[13px] leading-5">
+        <span className="shrink-0 text-sm2 leading-5">
           <Tex>{node.symbol}</Tex>
         </span>
-        <span className="shrink-0 font-mono text-[12px] tabular-nums">= {valueText(node)}</span>
+        <span className="shrink-0 font-mono text-sm2 tabular-nums">= {valueText(node)}</span>
 
-        <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate text-xs2 text-muted-foreground">
           {view.repeated ? "shown above" : node.label}
         </span>
 
         {view.role === undefined ? null : (
-          <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+          <span className="shrink-0 font-mono text-2xs text-muted-foreground">
             {ROLE_LABEL[view.role]}
           </span>
         )}
@@ -242,7 +291,7 @@ function TraceRow({
       </div>
 
       {showMath ? (
-        <div className="mb-1 ml-3 flex flex-col gap-1 overflow-x-auto border-l border-dashed border-border py-1 pl-3 text-[13px]">
+        <div className="mb-1 ml-3 flex flex-col gap-1 overflow-x-auto border-l border-dashed border-border py-1 pl-3 text-sm2">
           {node.formula === undefined ? null : (
             <Tex display className="text-foreground">
               {node.formula}
@@ -257,14 +306,25 @@ function TraceRow({
       ) : null}
 
       {expanded && node.note !== undefined ? (
-        <p className="mb-1 ml-3 pl-3 text-[11px] text-muted-foreground italic">{node.note}</p>
+        <p className="mb-1 ml-3 pl-3 text-xs2 text-muted-foreground italic">{node.note}</p>
       ) : null}
 
-      {expanded && hasChildren ? (
-        <ul className="ml-3 flex flex-col">
-          {view.children.map((child) => (
-            <TraceRow key={child.path} view={child} overrides={overrides} onToggle={onToggle} />
-          ))}
+      {hasChildren ? (
+        <ul
+          id={inputsId}
+          className={cn(
+            "ml-3 flex flex-col",
+            // The chevron was the only thing that moved; the rows it uncovered
+            // appeared fully formed, so the motion argued with the content.
+            // Same vocabulary the select popup already uses.
+            expanded && "animate-in fade-in-0 slide-in-from-top-1 duration-150 ease-out",
+          )}
+        >
+          {expanded
+            ? view.children.map((child) => (
+                <TraceRow key={child.path} view={child} overrides={overrides} onToggle={onToggle} />
+              ))
+            : null}
         </ul>
       ) : null}
     </li>
@@ -279,6 +339,9 @@ function CheckTrace({ check, scope }: { check: CheckResult; scope: string }) {
   // A failing check is the reason you opened this panel — start it open.
   const [open, setOpen] = useState(check.status === "ng");
   const [overrides, setOverrides] = useState<Record<string, boolean | undefined>>({});
+  // Same contract as TraceRow: the panel element is always mounted so the
+  // trigger's `aria-controls` resolves whether it is open or not.
+  const panelId = useId();
   const views = useMemo(() => buildCheckView(check), [check]);
   const markdown = useCallback(() => traceToMarkdown(check), [check]);
 
@@ -290,16 +353,24 @@ function CheckTrace({ check, scope }: { check: CheckResult; scope: string }) {
 
   return (
     <div className="border-b border-border last:border-b-0">
-      <div className="flex items-center gap-2 px-3 py-2">
+      {/* The whole row answers the pointer, not just the trigger inside it: a
+          full-width control that only shows a focus ring reads as text. */}
+      <div className="flex items-center gap-2 px-3 py-2 transition-colors duration-150 hover:bg-muted/40">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+          aria-controls={panelId}
+          /* the row is 32 px tall; the trigger now fills it instead of
+             leaving a 20 px strip of it dead */
+          className="-my-1.5 flex min-w-0 flex-1 items-center gap-2 rounded py-1.5 text-left focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
         >
           <ChevronRight
+            strokeWidth={1.5}
             className={cn(
-              "size-3 shrink-0 text-muted-foreground transition-transform",
+              // 120 ms, to land with the panel underneath it rather than
+              // finish first and wait for it.
+              "size-3 shrink-0 text-muted-foreground transition-transform duration-120 ease-out",
               open && "rotate-90",
             )}
             aria-hidden="true"
@@ -310,7 +381,7 @@ function CheckTrace({ check, scope }: { check: CheckResult; scope: string }) {
         <RefBadge refer={check.ref} className="shrink-0" />
         <span
           className={cn(
-            "w-10 shrink-0 text-right font-mono text-[11px] tabular-nums",
+            "w-10 shrink-0 text-right font-mono text-xs2 tabular-nums",
             statusText(check.status),
           )}
         >
@@ -326,16 +397,23 @@ function CheckTrace({ check, scope }: { check: CheckResult; scope: string }) {
         />
       </div>
 
-      {open ? (
-        <div className="px-3 pb-3">
-          <p className="pb-1 font-mono text-[10px] text-muted-foreground">{scope}</p>
-          <ul className="flex flex-col">
-            {views.map((view) => (
-              <TraceRow key={view.path} view={view} overrides={overrides} onToggle={toggle} />
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      <div
+        id={panelId}
+        className={
+          open ? "animate-in fade-in-0 slide-in-from-top-1 px-3 pb-3 duration-150 ease-out" : undefined
+        }
+      >
+        {open ? (
+          <>
+            <p className="pb-1 font-mono text-2xs text-muted-foreground">{scope}</p>
+            <ul className="flex flex-col">
+              {views.map((view) => (
+                <TraceRow key={view.path} view={view} overrides={overrides} onToggle={toggle} />
+              ))}
+            </ul>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -391,7 +469,7 @@ function reportMarkdown(input: WallInput, report: WallReport): string {
   }
   lines.push(
     "",
-    "> Generated by kern. Requires review by a licensed engineer; not engineering advice.",
+    `> Generated by kern. ${DISCLAIMER_SENTENCE}`,
     "",
     "**wall checks**",
     "",
@@ -422,7 +500,10 @@ export function TraceReport({
     <Card size="sm" className="gap-2">
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
-          <CardTitle className="font-mono text-xs font-medium tracking-tight text-muted-foreground">
+          <CardTitle
+            render={<h2 />}
+            className="font-mono text-xs font-medium tracking-tight text-muted-foreground"
+          >
             calculation trace
           </CardTitle>
           <CopyButton markdown={markdown} label="copy full report" />
@@ -455,7 +536,7 @@ export function TraceReport({
 
 function GroupLabel({ children }: { children: ReactNode }) {
   return (
-    <div className="border-b border-border bg-muted/40 px-3 py-1 font-mono text-[10px] text-muted-foreground">
+    <div className="border-b border-border bg-muted/40 px-3 py-1 font-mono text-2xs text-muted-foreground">
       {children}
     </div>
   );

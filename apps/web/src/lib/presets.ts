@@ -59,9 +59,12 @@ export const EXAMPLE_2: WallInput = {
     tieSpacing: 4,
     tieLegsAcrossWidth: 3,
   },
+  // Labelled, because the id is the codec's business and nobody else's: without
+  // these the slug `max-axial` surfaced as a card title, a chart marker, a trace
+  // scope and the governing-check suffix.
   demands: [
-    { id: "seismic", Pu: 1015, Mu: 37200, Vu: 470, MuOut: 120, VuOut: 32 },
-    { id: "max-axial", Pu: 1200, Mu: 37200, Vu: 470 },
+    { id: "seismic", label: "seismic", Pu: 1015, Mu: 37200, Vu: 470, MuOut: 120, VuOut: 32 },
+    { id: "max-axial", label: "max axial", Pu: 1200, Mu: 37200, Vu: 470 },
   ],
   seismic: { sdc: "D", deltaE: 2.4, Cd: 5, ns: 8, hsx: 216 },
   wallType: "bearing",
@@ -75,7 +78,10 @@ export const BLANK: WallInput = {
   grade: GRADE60,
   vertical: { bar: "5", spacing: 12, curtains: 2 },
   horizontal: { bar: "5", spacing: 12, curtains: 2 },
-  demands: [{ id: "load-1", label: "load-1", Pu: 0, Mu: 0, Vu: 0 }],
+  // Unlabelled on purpose: `load-1` is an internal id, and shipping it as the
+  // case's name printed a slug where a name belongs. Nameless, the input shows
+  // its placeholder and the results head the block with the id only.
+  demands: [{ id: "load-1", Pu: 0, Mu: 0, Vu: 0 }],
   wallType: "bearing",
   system: "ordinary",
 };
@@ -88,8 +94,23 @@ export const PRESETS = {
 
 export type PresetId = keyof typeof PRESETS;
 
+/** The order the presets are offered in — the only place that ordering lives. */
+export const PRESET_ORDER: PresetId[] = ["example-1", "example-2", "blank"];
+
+/** What a preset actually is. The toggle carries it as `title`; nothing else names them. */
 export const PRESET_LABELS: Record<PresetId, string> = {
   "example-1": "example 1 — ordinary",
   "example-2": "example 2 — special",
+  blank: "blank",
+};
+
+/**
+ * The same three at toggle width. Three buttons plus a reset share a 380 px
+ * column, so the full label cannot be the visible text — it arrives on hover and
+ * focus instead, and this is the abbreviation, not a second name.
+ */
+export const PRESET_SHORT: Record<PresetId, string> = {
+  "example-1": "ex 1",
+  "example-2": "ex 2",
   blank: "blank",
 };

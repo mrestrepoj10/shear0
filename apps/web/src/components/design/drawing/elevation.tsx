@@ -54,7 +54,7 @@ export function WallElevation({ input }: { input: WallInput }) {
 
   if (!(lw > 0) || !(hw > 0)) {
     return (
-      <p className="py-6 text-center font-mono text-[11px] text-muted-foreground">
+      <p className="py-6 text-center font-mono text-xs2 text-muted-foreground">
         elevation needs ℓw and hw greater than zero
       </p>
     );

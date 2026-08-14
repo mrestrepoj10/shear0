@@ -8,7 +8,7 @@
 
 import { fmt, type CheckResult, type WallReport } from "@kern/engine";
 import { checkTitle, governingCheck } from "@/components/design/results-summary";
-import { RefBadge, UtilizationBar, statusText } from "@/components/design/status";
+import { RefBadge, StatusBadge, UtilizationBar, statusText } from "@/components/design/status";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -50,11 +50,17 @@ export function UtilizationList({ report }: { report: WallReport }) {
     <Card size="sm" className="gap-2">
       <CardHeader>
         <div className="flex items-baseline justify-between gap-2">
-          <CardTitle className="font-mono text-xs font-medium tracking-tight text-muted-foreground">
+          <CardTitle
+            render={<h2 />}
+            className="font-mono text-xs font-medium tracking-tight text-muted-foreground"
+          >
             utilization
           </CardTitle>
-          <span className="font-mono text-[11px] text-muted-foreground">
-            {all.length} check{all.length === 1 ? "" : "s"} · demand / capacity
+          {/* Not every row is a demand / capacity ratio — spacing and ρ_min
+              checks report a ratio of their own — so the subtitle names what
+              the column actually holds. */}
+          <span className="font-mono text-xs2 text-muted-foreground">
+            {all.length} check{all.length === 1 ? "" : "s"} · utilization
           </span>
         </div>
       </CardHeader>
@@ -72,27 +78,38 @@ export function UtilizationList({ report }: { report: WallReport }) {
                 )}
               >
                 <div className="flex min-w-0 items-baseline gap-2">
+                  {/* Pass is neutral here, so a failing or warned row cannot be
+                      found by colour alone. The badge says the word, exactly as
+                      the summary and trace rows do. */}
+                  {row.check.status === "ok" ? null : (
+                    <StatusBadge status={row.check.status} className="shrink-0 self-center" />
+                  )}
                   <span
+                    title={checkTitle(row.check.title)}
                     className={cn(
-                      "min-w-0 truncate text-[13px]",
+                      "min-w-0 truncate text-sm2",
                       isGoverning ? "text-foreground" : "text-muted-foreground",
                     )}
                   >
                     {checkTitle(row.check.title)}
                   </span>
-                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                  <span className="shrink-0 font-mono text-2xs text-muted-foreground">
                     {row.scope}
                   </span>
                   <RefBadge refer={row.check.ref} className="shrink-0" />
                 </div>
-                <UtilizationBar
-                  utilization={row.utilization ?? 0}
-                  status={row.check.status}
-                  className={isGoverning ? "h-1.5" : undefined}
-                />
+                {finite ? (
+                  <UtilizationBar
+                    utilization={row.utilization}
+                    status={row.check.status}
+                    className={isGoverning ? "h-1.5" : undefined}
+                  />
+                ) : (
+                  <div className="h-1" aria-hidden="true" />
+                )}
                 <span
                   className={cn(
-                    "text-right font-mono text-[11px] tabular-nums",
+                    "text-right font-mono text-xs2 tabular-nums",
                     statusText(row.check.status),
                     isGoverning && "font-medium",
                   )}

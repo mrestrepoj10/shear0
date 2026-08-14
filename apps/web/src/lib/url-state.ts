@@ -39,9 +39,21 @@ const URL_WRITE_DEBOUNCE_MS = 300;
  * The load is a no-op when the page was server-rendered from the same link,
  * which is the normal case — it still runs for a client-side navigation into
  * /design, and it is the one place a hand-edited `?w=` gets picked up.
+ *
+ * `skipFirstWrite` suppresses that debounced write until the wall actually
+ * changes — passed when the mount-time `?w=` failed to decode, so the broken
+ * link survives on screen instead of being overwritten 300 ms later.
  */
-export function useWallUrlSync(input: WallInput, dispatch: (action: WallAction) => void): void {
+export function useWallUrlSync(
+  input: WallInput,
+  dispatch: (action: WallAction) => void,
+  options: { skipFirstWrite?: boolean } = {},
+): void {
   const loaded = useRef(false);
+  // Set only when the page mounted with a `?w=` that would not decode: the
+  // wall as it stood at mount, held so the sync can tell "nothing has happened
+  // yet" from "the user edited something". Cleared on the first real edit.
+  const untouched = useRef<WallInput | null>(options.skipFirstWrite === true ? input : null);
 
   // Runs on every input, does its work once: the guard means `input` here is
   // always the mount-time state, i.e. whatever the server put in the provider.
@@ -56,6 +68,13 @@ export function useWallUrlSync(input: WallInput, dispatch: (action: WallAction) 
 
   useEffect(() => {
     if (!loaded.current) return;
+    // A payload that could not be read is evidence: leave it in the address bar
+    // (it is the only copy of whatever the sender meant to share) until the
+    // user edits the wall, at which point the URL is theirs again.
+    if (untouched.current !== null) {
+      if (untouched.current === input) return;
+      untouched.current = null;
+    }
     const timer = window.setTimeout(() => {
       const encoded = encodeWallInput(input);
       const params = new URLSearchParams(window.location.search);

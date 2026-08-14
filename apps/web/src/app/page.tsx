@@ -1,10 +1,10 @@
 export default function Home() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-16">
-      <h1 className="text-3xl font-semibold tracking-tight">
+      <h1 className="text-3xl font-semibold tracking-tight text-balance">
         Shear walls, by the code.
       </h1>
-      <p className="mt-3 max-w-prose font-sans text-muted-foreground">
+      <p className="mt-3 max-w-prose font-sans text-pretty text-muted-foreground">
         kern is an open-source shear wall designer built for both learning and
         real design calculations, following ACI 318-19.
       </p>
