@@ -19,7 +19,7 @@
 import { defineChart, dot, lineY } from "@tanstack/charts";
 import { Chart } from "@tanstack/charts/react";
 import { scaleLinear } from "@tanstack/charts/scales/linear";
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -94,18 +94,34 @@ export interface XyChartProps<M = unknown> {
 // ---------------------------------------------------------------------------
 
 /**
- * Paints are emitted by the renderer as SVG presentation attributes, so we hand
- * it concrete colors rather than `var(--token)` strings and re-resolve them when
- * the theme class flips. The fallbacks below are what the server renders; the
- * first client effect replaces them, so SSR and hydration see the same markup.
- */
-/**
+ * Paints are `var(--token)` strings, handed straight to the renderer.
+ *
+ * This file used to resolve the tokens to literal colours in an effect and feed
+ * *those* to the chart, with `currentColor` as the server-side fallback. The
+ * cost was visible: SSR painted the whole plot in the host's inherited muted
+ * grey, and the first client effect repainted it — curve grey→foreground,
+ * marker grey→red — one frame after hydration. (Measured on /design: SSR
+ * `stroke="currentColor"` computing to `lab(72.16 0 0)`, then
+ * `lab(98.26% 0 0)`.)
+ *
+ * The resolution step was never needed. Every colour the renderer is handed is
+ * written out as an SVG presentation attribute or an inline `style` fill
+ * (`scene.js`: `stroke: theme.grid`, `stroke: theme.foreground`, `style: { fill:
+ * theme.foreground }`, per-mark `stroke`/`fill`) — the library never parses
+ * them, which is why its own default `theme.foreground` is the equally
+ * unparseable `"currentColor"`. So a `var()` reference survives the whole way
+ * to the DOM, exactly as it does in `drawing/plan-section.tsx`, and the server
+ * emits the same string the client does: no effect, no MutationObserver, no
+ * repaint, and the theme swap is handled by the cascade instead of by React.
+ *
+ * The one thing this ties us to is the SVG renderer — a canvas backend would
+ * need literals resolved again. The `Chart` adapter here renders SVG.
+ *
  * `ok` paints with `--foreground` on purpose: saturation in this app means a
  * check *failed*, so a passing marker is a plain dark dot. `--status-ok` stays
  * defined in `globals.css` as a reserved accent, but nothing on the page spends
  * it. See the header of `design/status.tsx`.
- */
-/**
+ *
  * `grid` paints from `--foreground`, not `--border`, and that is not a mistake.
  *
  * The renderer draws the grid group at a hard-coded `strokeOpacity: 0.11`
@@ -117,56 +133,26 @@ export interface XyChartProps<M = unknown> {
  * land on the border tone, which is what the design asked for in the first
  * place.
  */
-const TOKEN_VARS: Record<ChartToken, string> = {
-  line: "--foreground",
-  muted: "--muted-foreground",
-  grid: "--foreground",
-  ok: "--foreground",
-  ng: "--status-ng",
+const PALETTE: Record<ChartToken, string> = {
+  line: "var(--foreground)",
+  muted: "var(--muted-foreground)",
+  grid: "var(--foreground)",
+  ok: "var(--foreground)",
+  ng: "var(--status-ng)",
 };
 
-const TOKEN_FALLBACK: Record<ChartToken, string> = {
-  line: "currentColor",
-  muted: "currentColor",
-  grid: "currentColor",
-  ok: "currentColor",
-  ng: "currentColor",
-};
-
-const TOKENS = Object.keys(TOKEN_VARS) as ChartToken[];
-
-function samePalette(a: Record<ChartToken, string>, b: Record<ChartToken, string>): boolean {
-  return TOKENS.every((token) => a[token] === b[token]);
-}
-
-function usePalette(target: RefObject<HTMLElement | null>): Record<ChartToken, string> {
-  const [palette, setPalette] = useState<Record<ChartToken, string>>(TOKEN_FALLBACK);
-
-  useEffect(() => {
-    const element = target.current;
-    if (element === null) return;
-
-    const read = () => {
-      const style = getComputedStyle(element);
-      const next = {} as Record<ChartToken, string>;
-      for (const token of TOKENS) {
-        const value = style.getPropertyValue(TOKEN_VARS[token]).trim();
-        next[token] = value === "" ? TOKEN_FALLBACK[token] : value;
-      }
-      setPalette((prev) => (samePalette(prev, next) ? prev : next));
-    };
-
-    read();
-    const observer = new MutationObserver(read);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class", "style", "data-theme"],
-    });
-    return () => observer.disconnect();
-  }, [target]);
-
-  return palette;
-}
+/**
+ * The coordinate space the server draws in.
+ *
+ * The rendered `<svg>` is `width="100%"` over a `viewBox`, so a wrong
+ * `initialWidth` does not shift the page — it stretches the whole plot
+ * horizontally until the client measures the host and re-lays it out. The
+ * library's 720 against a measured 820 was a 14% squash of every tick label and
+ * curve for the length of hydration. 820 is the results column at the ≥1024 px
+ * layout (`max-w-5xl` minus the page and card padding), which is where the
+ * chart is read; narrower viewports still correct on mount, from closer.
+ */
+const INITIAL_WIDTH = 820;
 
 // ---------------------------------------------------------------------------
 // library-facing row model
@@ -197,9 +183,6 @@ export function XyChart<M = unknown>({
   className,
   onFocusChange,
 }: XyChartProps<M>) {
-  const host = useRef<HTMLDivElement>(null);
-  const palette = usePalette(host);
-
   const definition = useMemo(() => {
     const seriesRows = series.map((s) => ({
       series: s,
@@ -256,7 +239,7 @@ export function XyChart<M = unknown>({
           id: s.id,
           x: "x",
           y: "y",
-          stroke: palette[s.token],
+          stroke: PALETTE[s.token],
           strokeWidth: s.width ?? 1.75,
           ...(s.dashed === true ? { strokeDasharray: "4 3" } : {}),
           ...(s.opacity === undefined ? {} : { strokeOpacity: s.opacity }),
@@ -272,8 +255,8 @@ export function XyChart<M = unknown>({
           x: "x",
           y: "y",
           ...(token === "ng"
-            ? { r: 6, fill: "transparent", stroke: palette.ng, strokeWidth: 2 }
-            : { r: 4.5, fill: palette[token], stroke: palette[token], strokeWidth: 1 }),
+            ? { r: 6, fill: "transparent", stroke: PALETTE.ng, strokeWidth: 2 }
+            : { r: 4.5, fill: PALETTE[token], stroke: PALETTE[token], strokeWidth: 1 }),
         }),
       ),
       ...(anchors.length === 0
@@ -301,21 +284,18 @@ export function XyChart<M = unknown>({
           ...(y.format === undefined ? {} : { ticks: { format: y.format } }),
         },
       },
-      theme: { foreground: palette.line, muted: palette.muted, grid: palette.grid },
+      theme: { foreground: PALETTE.line, muted: PALETTE.muted, grid: PALETTE.grid },
     });
-  }, [series, markers, x, y, palette]);
+  }, [series, markers, x, y]);
 
   return (
     /* Axis text inherits the container font: the mono class here is what puts
        tick labels in tabular figures. */
-    <div
-      ref={host}
-      className={cn("w-full font-mono text-2xs text-muted-foreground", className)}
-    >
+    <div className={cn("w-full font-mono text-2xs text-muted-foreground", className)}>
       <Chart
         definition={definition}
         height={height}
-        initialWidth={720}
+        initialWidth={INITIAL_WIDTH}
         ariaLabel={ariaLabel}
         {...(ariaDescription === undefined ? {} : { ariaDescription })}
         onFocusChange={(point) => {
