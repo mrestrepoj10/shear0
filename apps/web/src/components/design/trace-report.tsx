@@ -190,8 +190,32 @@ function CopyButton({
       className={cn("font-mono text-xs2 text-muted-foreground", className)}
       aria-label={aria ?? label}
     >
-      {copied ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
-      {copied ? "copied" : label}
+      {/*
+        Both labels live in one grid cell, so the button is always as wide as
+        the longer of them and the swap costs no layout at all: "copy full
+        report" → "copied" used to take the button from 137 px to 72 px and
+        snap back 1.6 s later, reflowing the row under it twice. The two states
+        cross over in opacity and a 2 px blur instead — nothing moves.
+      */}
+      <span
+        data-icon="inline-start"
+        className="grid *:col-start-1 *:row-start-1 *:transition-[opacity,filter] *:duration-200 *:ease-out"
+      >
+        <span
+          aria-hidden={copied}
+          className={cn("inline-flex items-center gap-1", copied && "opacity-0 blur-[2px]")}
+        >
+          <Copy />
+          {label}
+        </span>
+        <span
+          aria-hidden={!copied}
+          className={cn("inline-flex items-center gap-1", !copied && "opacity-0 blur-[2px]")}
+        >
+          <Check />
+          copied
+        </span>
+      </span>
     </Button>
   );
 }
@@ -234,7 +258,10 @@ function TraceRow({
           >
             <ChevronRight
               strokeWidth={1.5}
-              className={cn("size-3 transition-transform", expanded && "rotate-90")}
+              className={cn(
+                "size-3 transition-transform duration-120 ease-out",
+                expanded && "rotate-90",
+              )}
               aria-hidden="true"
             />
             <span className="sr-only">{expanded ? "collapse" : "expand"}</span>
@@ -283,7 +310,16 @@ function TraceRow({
       ) : null}
 
       {hasChildren ? (
-        <ul id={inputsId} className="ml-3 flex flex-col">
+        <ul
+          id={inputsId}
+          className={cn(
+            "ml-3 flex flex-col",
+            // The chevron was the only thing that moved; the rows it uncovered
+            // appeared fully formed, so the motion argued with the content.
+            // Same vocabulary the select popup already uses.
+            expanded && "animate-in fade-in-0 slide-in-from-top-1 duration-150 ease-out",
+          )}
+        >
           {expanded
             ? view.children.map((child) => (
                 <TraceRow key={child.path} view={child} overrides={overrides} onToggle={onToggle} />
@@ -317,7 +353,9 @@ function CheckTrace({ check, scope }: { check: CheckResult; scope: string }) {
 
   return (
     <div className="border-b border-border last:border-b-0">
-      <div className="flex items-center gap-2 px-3 py-2">
+      {/* The whole row answers the pointer, not just the trigger inside it: a
+          full-width control that only shows a focus ring reads as text. */}
+      <div className="flex items-center gap-2 px-3 py-2 transition-colors duration-150 hover:bg-muted/40">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -330,7 +368,9 @@ function CheckTrace({ check, scope }: { check: CheckResult; scope: string }) {
           <ChevronRight
             strokeWidth={1.5}
             className={cn(
-              "size-3 shrink-0 text-muted-foreground transition-transform",
+              // 120 ms, to land with the panel underneath it rather than
+              // finish first and wait for it.
+              "size-3 shrink-0 text-muted-foreground transition-transform duration-120 ease-out",
               open && "rotate-90",
             )}
             aria-hidden="true"
@@ -357,7 +397,12 @@ function CheckTrace({ check, scope }: { check: CheckResult; scope: string }) {
         />
       </div>
 
-      <div id={panelId} className={open ? "px-3 pb-3" : undefined}>
+      <div
+        id={panelId}
+        className={
+          open ? "animate-in fade-in-0 slide-in-from-top-1 px-3 pb-3 duration-150 ease-out" : undefined
+        }
+      >
         {open ? (
           <>
             <p className="pb-1 font-mono text-2xs text-muted-foreground">{scope}</p>
