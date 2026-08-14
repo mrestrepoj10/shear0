@@ -39,6 +39,9 @@ import { encodeWallInput } from "@/lib/url-state";
 import {
   BAR_SIZES,
   PRESETS,
+  PRESET_LABELS,
+  PRESET_ORDER,
+  PRESET_SHORT,
   useWallDispatch,
   useWallInput,
   type PresetId,
@@ -50,11 +53,24 @@ const BAR_OPTIONS: SelectOption<BarSize>[] = BAR_SIZES.map((size) => ({
   label: `#${size}`,
 }));
 
+/**
+ * The control column is a fixed 8.5rem, which is ~11 mono characters once the
+ * trigger's padding and chevron are paid for: "0.8 — restrained top & bottom"
+ * rendered as "0.8 — restr…". The option carries the end condition in one word
+ * and the hint below the label spells it out.
+ */
 const K_OPTIONS: SelectOption<"0.8" | "1" | "2">[] = [
-  { value: "0.8", label: "0.8 — restrained top & bottom" },
-  { value: "1", label: "1.0 — pinned" },
-  { value: "2", label: "2.0 — cantilever" },
+  { value: "0.8", label: "0.8 fixed" },
+  { value: "1", label: "1.0 pinned" },
+  { value: "2", label: "2.0 free" },
 ];
+
+/** Measured against the 208 px label column: 31 characters is the whole budget. */
+const K_HINTS: Record<"0.8" | "1" | "2", string> = {
+  "0.8": "11.5.3.1 · restrained both ends",
+  "1": "11.5.3.1 · pinned both ends",
+  "2": "11.5.3.1 · cantilever, free top",
+};
 
 const GRADE_OPTIONS: SelectOption<"60" | "80">[] = [
   { value: "60", label: "Grade 60" },
@@ -70,15 +86,11 @@ const SDC_OPTIONS: SelectOption<SeismicParams["sdc"]>[] = (
   ["A", "B", "C", "D", "E", "F"] as const
 ).map((sdc) => ({ value: sdc, label: `SDC ${sdc}` }));
 
+/** Same 11-character budget: the section number *is* the reading, and the
+ *  paragraph under the group says what each one does. */
 const PHI_READING_OPTIONS: SelectOption<"handbook-conservative" | "exempt-18.10.4.6">[] = [
-  { value: "handbook-conservative", label: "21.2.4.1 applies" },
-  { value: "exempt-18.10.4.6", label: "18.10.4.6 exempts" },
-];
-
-const PRESET_ORDER: { id: PresetId; label: string }[] = [
-  { id: "example-1", label: "ex 1" },
-  { id: "example-2", label: "ex 2" },
-  { id: "blank", label: "blank" },
+  { value: "handbook-conservative", label: "21.2.4.1" },
+  { value: "exempt-18.10.4.6", label: "18.10.4.6" },
 ];
 
 /** How a preset is named in a sentence, for the undo toast. */
@@ -101,7 +113,7 @@ function undoToast(title: string, restore: () => void): void {
  * The presets pre-encoded once, at module scope: the presets are constants, so
  * re-encoding all three on every keystroke was pure waste.
  */
-const PRESET_CODES: { id: PresetId; code: string }[] = PRESET_ORDER.map(({ id }) => ({
+const PRESET_CODES: { id: PresetId; code: string }[] = PRESET_ORDER.map((id) => ({
   id,
   code: encodeWallInput(PRESETS[id]),
 }));
@@ -165,7 +177,10 @@ function GeometryCard({ input, dispatch }: PanelProps) {
             step={0.25}
           />
         </FieldRow>
-        <FieldRow label="effective length factor k" hint="11.5.3.1">
+        <FieldRow
+          label="effective length factor k"
+          hint={K_HINTS[geometry.k === 0.8 ? "0.8" : geometry.k === 2 ? "2" : "1"]}
+        >
           <SelectField
             value={geometry.k === 0.8 ? "0.8" : geometry.k === 2 ? "2" : "1"}
             options={K_OPTIONS}
@@ -261,10 +276,10 @@ function ReinforcementCard({ input, dispatch }: PanelProps) {
           spacing={0}
           aria-label="curtains of reinforcement"
         >
-          <ToggleGroupItem value="1" size="sm" variant="outline" className="font-mono text-[11px]">
+          <ToggleGroupItem value="1" size="sm" variant="outline" className="font-mono text-xs2">
             1 curtain
           </ToggleGroupItem>
-          <ToggleGroupItem value="2" size="sm" variant="outline" className="font-mono text-[11px]">
+          <ToggleGroupItem value="2" size="sm" variant="outline" className="font-mono text-xs2">
             2 curtains
           </ToggleGroupItem>
         </ToggleGroup>
@@ -314,7 +329,7 @@ function ReinforcementCard({ input, dispatch }: PanelProps) {
       </FieldGroup>
 
       <div className="mt-1 flex items-center justify-between border-t border-border pt-2">
-        <span className="font-mono text-[11px] text-muted-foreground">end-zone bars</span>
+        <span className="font-mono text-xs2 text-muted-foreground">end-zone bars</span>
         <Button
           size="xs"
           variant="ghost"
@@ -445,7 +460,7 @@ function SystemCard({ input, dispatch }: PanelProps) {
             value="ordinary"
             size="sm"
             variant="outline"
-            className="font-mono text-[11px]"
+            className="font-mono text-xs2"
           >
             ordinary
           </ToggleGroupItem>
@@ -453,14 +468,14 @@ function SystemCard({ input, dispatch }: PanelProps) {
             value="special"
             size="sm"
             variant="outline"
-            className="font-mono text-[11px]"
+            className="font-mono text-xs2"
           >
             special
           </ToggleGroupItem>
         </ToggleGroup>
       }
     >
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-xs2 text-muted-foreground">
         {special
           ? "chapter 11 plus §18.10: Ve amplification, seismic web reinforcement, boundary elements."
           : "chapter 11 only — cast-in-place wall, no seismic detailing."}
@@ -541,7 +556,7 @@ function SystemCard({ input, dispatch }: PanelProps) {
               />
             </FieldRow>
           </FieldGroup>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs2 text-muted-foreground">
             {(input.phiSeismicReading ?? "handbook-conservative") === "handbook-conservative"
               ? "φ drops to 0.60 when Vn < the shear at Mn, as MNL-17 Ex. 2 does even on the 18.10.6.2 path."
               : "18.10.4.6 read literally: walls designed by 18.10.6.2 keep φ = 0.75."}
@@ -601,7 +616,7 @@ function BoundaryElementCard({ input, dispatch }: PanelProps) {
       }
     >
       {sbe === undefined ? (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs2 text-muted-foreground">
           none provided — if 18.10.6.2(a) requires one, the detailing check reports ng.
         </p>
       ) : (
@@ -867,15 +882,22 @@ export function InputsPanel() {
             spacing={0}
             aria-label="starting point"
           >
-            {PRESET_ORDER.map(({ id, label }) => (
+            {/* `PRESET_LABELS` was built and never rendered, so the toggle
+                shipped "ex 1 / ex 2 / blank" and nothing on the page said what
+                either example was. The full label cannot fit three-across in
+                this column, so it arrives as the accessible name and the
+                tooltip while the abbreviation stays visible. */}
+            {PRESET_ORDER.map((id) => (
               <ToggleGroupItem
                 key={id}
                 value={id}
                 size="sm"
                 variant="outline"
-                className="font-mono text-[11px]"
+                title={PRESET_LABELS[id]}
+                aria-label={PRESET_LABELS[id]}
+                className="font-mono text-xs2"
               >
-                {label}
+                {PRESET_SHORT[id]}
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
