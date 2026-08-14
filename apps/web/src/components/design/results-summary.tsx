@@ -109,7 +109,7 @@ function failingCount(report: WallReport): number {
  * passing design, it is an unasked question, so it reads as n/a and says what
  * to do. The rows below stay exactly as the engine computed them.
  */
-function hasNoLoads(report: WallReport): boolean {
+export function hasNoLoads(report: WallReport): boolean {
   return report.perDemand.every(
     ({ demand }) =>
       demand.Pu === 0 &&
@@ -118,6 +118,16 @@ function hasNoLoads(report: WallReport): boolean {
       (demand.MuOut ?? 0) === 0 &&
       (demand.VuOut ?? 0) === 0,
   );
+}
+
+/**
+ * The page-level verdict rule, shared: a wall with every demand at zero is an
+ * unasked question, not a passing design, so anything reporting an overall
+ * status (the strip here, the design map, the options comparison) reads it as
+ * n/a through this one function rather than re-deciding.
+ */
+export function normalizedStatus(report: WallReport): CheckStatus {
+  return report.status !== "ng" && hasNoLoads(report) ? "na" : report.status;
 }
 
 export function VerdictStrip({ report }: { report: WallReport }) {

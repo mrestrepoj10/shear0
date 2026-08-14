@@ -34,6 +34,7 @@ import { XyChart, type XySeries } from "@/components/charts/xy-chart";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge, num, statusText } from "@/components/design/status";
+import { normalizedStatus } from "@/components/design/results-summary";
 import { decodeWallInput, encodeWallInput } from "@/lib/wall-codec";
 import { cn } from "@/lib/utils";
 
@@ -41,6 +42,17 @@ const STORAGE_KEY = "kern.pinned-options.v1";
 const MAX_OPTIONS = 3;
 const OPTION_LETTERS = ["A", "B", "C"] as const;
 const CURVE_POINTS = 80;
+
+/**
+ * One dash pattern per option letter, so three same-token curves stay
+ * tellable apart even where they cross — the legend repeats the pattern next
+ * to each letter. Monochrome stays monochrome; identity rides on texture.
+ */
+const OPTION_DASH: Record<(typeof OPTION_LETTERS)[number], string> = {
+  A: "7 3",
+  B: "2 3",
+  C: "8 2 2 2",
+};
 
 /** Steel weight per vertical foot of wall, lb/ft: As (in²) × 490 pcf / 144. */
 const STEEL_LB_PER_FT_PER_IN2 = 490 / 144;
@@ -175,8 +187,8 @@ export const DesignOptions = memo(function DesignOptions({
           id: `option-${option.letter}`,
           label: `option ${option.letter}`,
           token: "muted",
-          dashed: true,
-          width: 1.25,
+          dash: OPTION_DASH[option.letter as keyof typeof OPTION_DASH] ?? "4 3",
+          width: 1.4,
           points: designCurve(option.input, { points: CURVE_POINTS }).map((p) => ({
             x: p.phiMn,
             y: p.phiPn,
@@ -238,11 +250,15 @@ export const DesignOptions = memo(function DesignOptions({
           <>
             <XyChart
               ariaLabel="Design interaction surfaces of the current design and each pinned option"
-              ariaDescription="The current design surface is solid; each pinned option is dashed."
+              ariaDescription="The current design surface is solid; each pinned option has its own dash pattern, named in the legend."
               series={overlay}
               height={240}
               x={{ label: "M  (kip-ft)", format: (v) => fmt(v, { dp: 0 }), include: [0] }}
               y={{ label: "P  (kip)", format: (v) => fmt(v, { dp: 0 }), include: [0] }}
+              focus="nearest"
+              tooltip={(point) =>
+                `${point.label}\nφMn ${num(point.x)} kip-ft · φPn ${num(point.y)} kip`
+              }
             />
 
             <div className="overflow-x-auto">
@@ -316,12 +332,15 @@ export const DesignOptions = memo(function DesignOptions({
                     <th scope="row" className="py-1 pr-3 text-left font-normal text-muted-foreground">
                       overall
                     </th>
+                    {/* Normalized like the verdict strip: an all-zero load set
+                        is an unasked question, not a pass — the comparison must
+                        never contradict the page-level verdict. */}
                     <td className="py-1 pr-3 text-right">
-                      <StatusBadge status={report.status} />
+                      <StatusBadge status={normalizedStatus(report)} />
                     </td>
                     {options.map((option) => (
                       <td key={option.letter} className="py-1 pr-3 text-right">
-                        <StatusBadge status={option.report.status} />
+                        <StatusBadge status={normalizedStatus(option.report)} />
                       </td>
                     ))}
                   </tr>
@@ -330,8 +349,18 @@ export const DesignOptions = memo(function DesignOptions({
             </div>
 
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-2xs text-muted-foreground">
-              <span>solid — current</span>
-              <span>dashed — pinned options</span>
+              <span className="flex items-center gap-1.5">
+                <DashSwatch dash={null} />
+                current
+              </span>
+              {options.map((option) => (
+                <span key={option.letter} className="flex items-center gap-1.5">
+                  <DashSwatch
+                    dash={OPTION_DASH[option.letter as keyof typeof OPTION_DASH] ?? "4 3"}
+                  />
+                  option {option.letter}
+                </span>
+              ))}
               <span>utilizations are the worst across load cases</span>
             </div>
           </>
@@ -340,6 +369,24 @@ export const DesignOptions = memo(function DesignOptions({
     </Card>
   );
 });
+
+/** The legend's line sample: solid for the current design, the option's own dash otherwise. */
+function DashSwatch({ dash }: { dash: string | null }) {
+  return (
+    <svg width={18} height={6} aria-hidden="true">
+      <line
+        x1="0"
+        y1="3"
+        x2="18"
+        y2="3"
+        stroke="currentColor"
+        strokeWidth={dash === null ? 2 : 1.4}
+        strokeDasharray={dash ?? undefined}
+        className={dash === null ? "text-foreground" : "text-muted-foreground"}
+      />
+    </svg>
+  );
+}
 
 function SteelCell({ input }: { input: WallInput }) {
   let text = "—";

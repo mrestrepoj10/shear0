@@ -44,6 +44,12 @@ export interface XySeries<M = unknown> {
   points: readonly XyPoint<M>[];
   token: ChartToken;
   dashed?: boolean;
+  /**
+   * Explicit dash pattern (SVG `stroke-dasharray`), overriding `dashed`'s
+   * default "4 3" — for charts overlaying several same-token series that must
+   * stay tellable apart (the design-options comparison).
+   */
+  dash?: string;
   /** stroke width in px; defaults to 1.75 */
   width?: number;
   opacity?: number;
@@ -332,7 +338,11 @@ export function XyChart<M = unknown>({
           y: "y",
           stroke: PALETTE[s.token],
           strokeWidth: s.width ?? 1.75,
-          ...(s.dashed === true ? { strokeDasharray: "4 3" } : {}),
+          ...(s.dash !== undefined
+            ? { strokeDasharray: s.dash }
+            : s.dashed === true
+              ? { strokeDasharray: "4 3" }
+              : {}),
           ...(s.opacity === undefined ? {} : { strokeOpacity: s.opacity }),
         }),
       ),

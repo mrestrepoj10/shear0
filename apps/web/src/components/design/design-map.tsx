@@ -38,8 +38,11 @@ import {
 import { memo, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { num } from "@/components/design/status";
+import { hasNoLoads, normalizedStatus } from "@/components/design/results-summary";
+import { BAR_SIZES } from "@/lib/presets";
 import { useWallDispatch } from "@/lib/wall-state";
 import { cn } from "@/lib/utils";
+import type { CheckStatus } from "@kern/engine";
 
 /** The practical iteration range; the full BAR_SIZES list would double the rows for sizes nobody puts in a wall web. */
 const MAP_BARS: BarSize[] = ["4", "5", "6", "7", "8"];
@@ -50,9 +53,25 @@ interface Cell {
   spacing: number;
   /** worst finite utilization across every check, or null when the engine cannot run */
   utilization: number | null;
-  ok: boolean;
+  /** the candidate's overall verdict, normalized the way the verdict strip is */
+  status: CheckStatus;
   /** title of the check with the highest utilization (or the first failure) */
   governing: string;
+}
+
+/**
+ * The grid always contains the wall being designed: the inputs accept #3–#11
+ * at any spacing, so a #9 wall or a 5-inch spacing gets its row/column added
+ * dynamically rather than losing its ring off the edge of the map.
+ */
+function axes(bar: BarSize, spacing: number): { bars: BarSize[]; spacings: number[] } {
+  const bars = MAP_BARS.includes(bar)
+    ? MAP_BARS
+    : BAR_SIZES.filter((size) => size === bar || MAP_BARS.includes(size));
+  const spacings = SPACINGS.includes(spacing)
+    ? SPACINGS
+    : [...SPACINGS, spacing].sort((a, b) => a - b);
+  return { bars, spacings };
 }
 
 /**
@@ -100,10 +119,14 @@ export const DesignMap = memo(function DesignMap({
   const dispatch = useWallDispatch();
   const [hover, setHover] = useState<Cell | null>(null);
 
-  const cells = useMemo(() => {
+  const { bars, spacings, cells, unloaded } = useMemo(() => {
     const run = input.system === "special" ? checkSpecialWall : checkOrdinaryWall;
-    return MAP_BARS.map((bar) =>
-      SPACINGS.map((spacing): Cell => {
+    const { bars, spacings } = axes(input.vertical.bar, input.vertical.spacing);
+    // Feasibility is a strength question; with every demand at zero there is
+    // nothing to ask, exactly as the verdict strip reads it.
+    const unloaded = hasNoLoads(report);
+    const cells = bars.map((bar) =>
+      spacings.map((spacing): Cell => {
         // The current design's own cell reads from the live report, so the
         // map can never disagree with the verdict strip beside it.
         const isCurrent = bar === input.vertical.bar && spacing === input.vertical.spacing;
@@ -113,22 +136,32 @@ export const DesignMap = memo(function DesignMap({
             : { ...input, vertical: { ...input.vertical, bar, spacing } };
           const result = isCurrent ? report : run(candidate);
           const { utilization, governing } = worstOf(result);
-          return { bar, spacing, utilization, ok: result.status !== "ng", governing };
+          return { bar, spacing, utilization, status: normalizedStatus(result), governing };
         } catch {
-          return { bar, spacing, utilization: null, ok: false, governing: "engine could not run" };
+          return {
+            bar,
+            spacing,
+            utilization: null,
+            status: "ng",
+            governing: "engine could not run",
+          };
         }
       }),
     );
+    return { bars, spacings, cells, unloaded };
   }, [input, report]);
 
   const current = { bar: input.vertical.bar, spacing: input.vertical.spacing };
-  const feasible = cells.flat().filter((cell) => cell.ok).length;
+  const flat = cells.flat();
+  const feasible = flat.filter((cell) => cell.status === "ok").length;
+  const warned = flat.filter((cell) => cell.status === "warning").length;
+  const gridTemplate = `2.5rem repeat(${spacings.length}, minmax(0, 1fr))`;
 
   // Tone ramps over the *observed* utilization range, not 0–1: the candidates
   // often all sit inside a narrow band (0.6–1.0 say), and an absolute ramp
   // renders that as one indistinguishable shade. The readout carries the
   // absolute number; the map's job is the gradient.
-  const passing = cells.flat().filter((c) => c.ok && c.utilization !== null);
+  const passing = flat.filter((c) => c.status !== "ng" && c.utilization !== null);
   const uMin = Math.min(...passing.map((c) => c.utilization ?? 0));
   const uMax = Math.max(...passing.map((c) => c.utilization ?? 0));
   const ramp = (u: number | null): number => {
@@ -159,9 +192,9 @@ export const DesignMap = memo(function DesignMap({
           className="flex flex-col gap-1"
         >
           {/* column header: spacings */}
-          <div role="row" className="grid grid-cols-[2.5rem_repeat(13,minmax(0,1fr))] gap-1">
+          <div role="row" className="grid gap-1" style={{ gridTemplateColumns: gridTemplate }}>
             <span role="columnheader" className="font-mono text-2xs text-muted-foreground" />
-            {SPACINGS.map((s) => (
+            {spacings.map((s) => (
               <span
                 key={s}
                 role="columnheader"
@@ -172,13 +205,14 @@ export const DesignMap = memo(function DesignMap({
             ))}
           </div>
           {cells.map((row, r) => {
-            const bar = MAP_BARS[r];
+            const bar = bars[r];
             if (bar === undefined) return null;
             return (
               <div
                 key={bar}
                 role="row"
-                className="grid grid-cols-[2.5rem_repeat(13,minmax(0,1fr))] gap-1"
+                className="grid gap-1"
+                style={{ gridTemplateColumns: gridTemplate }}
               >
                 <span
                   role="rowheader"
@@ -190,21 +224,31 @@ export const DesignMap = memo(function DesignMap({
                   const isCurrent = cell.bar === current.bar && cell.spacing === current.spacing;
                   const u = cell.utilization;
                   // Tone is utilization made visible: light means headroom,
-                  // dark means close to the limit, hue means failure.
-                  const tone = cell.ok
-                    ? { backgroundColor: `color-mix(in oklab, var(--foreground) ${Math.round(7 + 48 * ramp(u))}%, transparent)` }
-                    : { backgroundColor: "color-mix(in oklab, var(--status-ng) 24%, transparent)" };
+                  // dark means close to the limit, hue means failure, and an
+                  // unloaded wall has nothing to say — same vocabulary as the
+                  // status badges (warning differs by a ring, never hue).
+                  const tone =
+                    cell.status === "ng"
+                      ? { backgroundColor: "color-mix(in oklab, var(--status-ng) 24%, transparent)" }
+                      : cell.status === "na"
+                        ? { backgroundColor: "color-mix(in oklab, var(--foreground) 5%, transparent)" }
+                        : { backgroundColor: `color-mix(in oklab, var(--foreground) ${Math.round(7 + 48 * ramp(u))}%, transparent)` };
+                  const spoken =
+                    cell.status === "ng"
+                      ? `fails ${cell.governing}`
+                      : cell.status === "na"
+                        ? "not evaluated — no loads applied"
+                        : `${cell.status === "warning" ? "passes with warnings" : "passes"}, utilization ${num(u ?? undefined, 2)}`;
                   return (
                     <button
                       key={cell.spacing}
                       type="button"
                       role="gridcell"
-                      aria-label={`#${cell.bar} at ${cell.spacing} inches — ${
-                        cell.ok ? `passes, utilization ${num(u ?? undefined, 2)}` : `fails ${cell.governing}`
-                      }${isCurrent ? " (current design)" : ""}`}
-                      data-status={cell.ok ? "ok" : "ng"}
+                      aria-label={`#${cell.bar} at ${cell.spacing} inches — ${spoken}${isCurrent ? " (current design)" : ""}`}
+                      data-status={cell.status}
                       className={cn(
                         "h-5 rounded-[3px] transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none",
+                        cell.status === "warning" && "ring-1 ring-inset ring-foreground/40",
                         isCurrent && "ring-2 ring-foreground ring-offset-1 ring-offset-card",
                       )}
                       style={tone}
@@ -229,18 +273,32 @@ export const DesignMap = memo(function DesignMap({
 
         <p aria-live="polite" className="min-h-8 font-mono text-xs2 leading-4 text-muted-foreground">
           {hover === null ? (
-            <>
-              {feasible} of {MAP_BARS.length * SPACINGS.length} combinations pass every check
-              <br />
-              hover a cell to read it — click to apply
-            </>
+            unloaded ? (
+              <>
+                every demand is zero — feasibility is not evaluated
+                <br />
+                add a load case and the map fills in
+              </>
+            ) : (
+              <>
+                {feasible} of {flat.length} combinations pass every check
+                {warned > 0 ? ` · ${warned} with warnings` : ""}
+                <br />
+                hover a cell to read it — click to apply
+              </>
+            )
           ) : (
             <>
               #{hover.bar} @ {fmt(hover.spacing)} in —{" "}
-              {hover.ok ? (
-                <>utilization {num(hover.utilization ?? undefined, 2)}</>
-              ) : (
+              {hover.status === "ng" ? (
                 <span className="text-status-ng">fails</span>
+              ) : hover.status === "na" ? (
+                <>n/a</>
+              ) : (
+                <>
+                  utilization {num(hover.utilization ?? undefined, 2)}
+                  {hover.status === "warning" ? " (with warnings)" : ""}
+                </>
               )}
               <br />
               governing: {hover.governing}
@@ -251,6 +309,7 @@ export const DesignMap = memo(function DesignMap({
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-2xs text-muted-foreground">
           <span>light → dark: governing utilization</span>
           <span className="text-status-ng">tinted — fails a check</span>
+          <span>inner ring — warnings</span>
           <span>ring — current design</span>
         </div>
       </CardContent>
