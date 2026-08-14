@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Navbar } from "@/components/navbar";
 import { Toaster } from "@/components/ui/sonner";
+import { DISCLAIMER } from "@/lib/copy";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,7 +32,7 @@ function Footer() {
   return (
     <footer className="mt-16 border-t border-border">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-2 gap-y-1 px-4 py-4 text-xs text-muted-foreground">
-        <span>for engineering review — verify every result with a licensed engineer</span>
+        <span>{DISCLAIMER}</span>
         <span aria-hidden="true">·</span>
         <a
           href={`${REPO}/blob/main/LICENSE`}

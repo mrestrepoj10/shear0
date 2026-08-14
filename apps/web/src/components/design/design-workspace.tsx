@@ -73,9 +73,20 @@ function Workspace({ linkFailed }: { linkFailed: boolean }) {
 
         <section className="flex min-w-0 flex-col gap-3">
           {report === null || deferred === null ? (
+            /* The exception was the only thing this panel said, and a stack
+               message is not a next step. The instruction leads; the engine's
+               own words stay one click away for whoever needs them. */
             <div className="rounded-xl border border-border p-4">
-              <p className="text-sm text-destructive">the engine could not run on these inputs</p>
-              <p className="mt-2 font-mono text-[11px] text-muted-foreground">{error}</p>
+              <p className="text-sm text-destructive">
+                the engine could not run on these inputs — check that ℓw, h and every bar spacing
+                are greater than zero, then try again
+              </p>
+              <details className="mt-3">
+                <summary className="w-fit cursor-pointer font-mono text-xs2 text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none">
+                  engine message
+                </summary>
+                <p className="mt-1.5 font-mono text-xs2 text-muted-foreground">{error}</p>
+              </details>
             </div>
           ) : (
             <>

@@ -5,6 +5,7 @@ import { RefBadge } from "@/components/design/status";
 import { TopicVisual } from "@/components/learn/topic-visual";
 import { TraceWalkthrough } from "@/components/learn/trace-walkthrough";
 import { LEARN_TOPICS, learnTopic, type LearnCase } from "@/components/learn/topics";
+import { DISCLAIMER_SENTENCE } from "@/lib/copy";
 import { encodeWallInput } from "@/lib/wall-codec";
 import { fmt, type Demands } from "@kern/engine";
 
@@ -137,8 +138,7 @@ export default async function LearnTopicPage({ params }: PageProps<"/learn/[slug
 
       <p className="mt-10 max-w-prose font-mono text-xs2 text-muted-foreground">
         every step above is the engine&rsquo;s own output — kern does not restate the code in prose
-        and then compute it separately. Output requires review by a licensed engineer and is not
-        engineering advice.
+        and then compute it separately. {DISCLAIMER_SENTENCE}
       </p>
     </article>
   );
