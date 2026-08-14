@@ -132,8 +132,29 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* No 300 ms double-tap delay; zoom is still available via pinch. */
+    touch-action: manipulation;
   }
   html {
     @apply font-sans;
+  }
+}
+
+/**
+ * One global reduce block, ahead of the motion work.
+ *
+ * It only *shortens* durations — it never introduces a transition — so
+ * next-themes' `disableTransitionOnChange` (which injects `* { transition:
+ * none !important }` into <head> at swap time, later in the cascade than this
+ * sheet) still wins and the theme swap stays smear-free.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
