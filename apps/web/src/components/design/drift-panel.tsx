@@ -338,8 +338,17 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
       </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-2xs text-muted-foreground">
-        <Swatch>δc/hwcs used</Swatch>
-        <Swatch dashed>computed · 1.5δu/hwcs demand</Swatch>
+        {/* Three series, three swatches. One dashed swatch used to stand for
+            two different dashed lines — the raw equation and the drift demand
+            — so the legend could not tell you which line you were reading.
+            Each swatch now draws at the width and opacity its series does. */}
+        <Swatch width={2}>δc/hwcs used</Swatch>
+        <Swatch dashed width={1.25} opacity={0.6}>
+          computed, before the floor
+        </Swatch>
+        <Swatch dashed width={1.75}>
+          1.5δu/hwcs demand
+        </Swatch>
         {provided === undefined ? null : (
           <span className="flex items-center gap-1.5">
             {/* Same vocabulary as the marker on the plot: filled neutral when
@@ -403,17 +412,29 @@ function Readout({
   );
 }
 
-function Swatch({ dashed, children }: { dashed?: boolean; children: ReactNode }) {
+/** A legend key drawn with the exact stroke of the series it stands for. */
+function Swatch({
+  dashed,
+  width,
+  opacity,
+  children,
+}: {
+  dashed?: boolean;
+  width: number;
+  opacity?: number;
+  children: ReactNode;
+}) {
   return (
     <span className="flex items-center gap-1.5">
-      <svg width="18" height="6" aria-hidden="true">
+      <svg width="18" height="6" aria-hidden="true" className="shrink-0">
         <line
           x1="0"
           y1="3"
           x2="18"
           y2="3"
           stroke="currentColor"
-          strokeWidth={dashed === true ? 1.5 : 2}
+          strokeWidth={width}
+          strokeOpacity={opacity}
           strokeDasharray={dashed === true ? "4 3" : undefined}
           className={dashed === true ? "text-muted-foreground" : "text-foreground"}
         />

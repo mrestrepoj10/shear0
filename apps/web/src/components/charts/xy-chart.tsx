@@ -105,10 +105,22 @@ export interface XyChartProps<M = unknown> {
  * defined in `globals.css` as a reserved accent, but nothing on the page spends
  * it. See the header of `design/status.tsx`.
  */
+/**
+ * `grid` paints from `--foreground`, not `--border`, and that is not a mistake.
+ *
+ * The renderer draws the grid group at a hard-coded `strokeOpacity: 0.11`
+ * (`scene.js`, `createGrid`), so whatever colour it is handed arrives at 11% of
+ * itself. `--border` is *already* the 11%-ish tone (oklch 0.922 light, white at
+ * 10% dark), so 11% of it was ~1% contrast: gridlines that were in the DOM and
+ * invisible on both charts in both themes — which is what "grid: true renders
+ * nothing" actually was. Handing it the foreground makes the rendered hairline
+ * land on the border tone, which is what the design asked for in the first
+ * place.
+ */
 const TOKEN_VARS: Record<ChartToken, string> = {
   line: "--foreground",
   muted: "--muted-foreground",
-  grid: "--border",
+  grid: "--foreground",
   ok: "--foreground",
   ng: "--status-ng",
 };
