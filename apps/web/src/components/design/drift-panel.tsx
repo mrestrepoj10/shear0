@@ -30,7 +30,8 @@ import {
   type Demands,
   type WallInput,
 } from "@kern/engine";
-import { memo, useMemo, useState, type ReactNode } from "react";
+import { memo, useMemo, useRef, useState, type ReactNode } from "react";
+import { ChartExportButtons } from "@/components/design/chart-export";
 import {
   XyChart,
   type ChartToken,
@@ -173,6 +174,7 @@ function build(input: WallInput): DriftView | StressView | null {
 export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput }) {
   const view = useMemo(() => (input.system === "special" ? build(input) : null), [input]);
   const [focus, setFocus] = useState<XyFocus<DriftMeta> | null>(null);
+  const plotRef = useRef<HTMLDivElement>(null);
 
   const chart = useMemo(() => {
     if (view === null || view.path !== "displacement") return null;
@@ -267,7 +269,10 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
   const passes = capacity !== undefined && capacity >= view.demand15;
 
   return (
-    <Panel subtitle="ACI 318-19 §18.10.6.2(b) — width against drift">
+    <Panel
+      subtitle="ACI 318-19 §18.10.6.2(b) — width against drift"
+      actions={<ChartExportButtons containerRef={plotRef} filename="drift-capacity" />}
+    >
       {/* The chart is one picture behind `role="img"`; these are the two
           numbers it exists to compare, plus the answer they give. */}
       <p className="sr-only">
@@ -285,6 +290,7 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
       </p>
 
       {chart === null ? null : (
+        <div ref={plotRef}>
         <XyChart<DriftMeta>
           ariaLabel="drift capacity against boundary element width"
           ariaDescription="Drift capacity from Eq. (18.10.6.2b) swept over the boundary element width, with the amplified design drift demand as a horizontal line and the provided width marked."
@@ -295,6 +301,7 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
           y={Y_AXIS}
           onFocusChange={setFocus}
         />
+        </div>
       )}
 
       <p aria-live="polite" className="min-h-8 font-mono text-xs2 leading-4 text-muted-foreground">
@@ -369,7 +376,15 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
   );
 });
 
-function Panel({ subtitle, children }: { subtitle: string; children: ReactNode }) {
+function Panel({
+  subtitle,
+  actions,
+  children,
+}: {
+  subtitle: string;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <Card size="sm" className="gap-2">
       <CardHeader>
@@ -380,7 +395,10 @@ function Panel({ subtitle, children }: { subtitle: string; children: ReactNode }
           >
             drift capacity
           </CardTitle>
-          <span className="truncate font-mono text-xs2 text-muted-foreground">{subtitle}</span>
+          <span className="flex items-center gap-2">
+            <span className="truncate font-mono text-xs2 text-muted-foreground">{subtitle}</span>
+            {actions}
+          </span>
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">{children}</CardContent>
