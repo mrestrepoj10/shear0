@@ -103,6 +103,10 @@ export function NumberField({
           if (Number.isFinite(parsed)) onValueChange(parsed);
         }}
         onBlur={() => setDraft(null)}
+        // A wheel tick over a focused number input silently increments it —
+        // scrolling the 24-field panel would edit the design. Drop focus so the
+        // page scrolls instead; the value only ever changes by typing.
+        onWheel={(event) => event.currentTarget.blur()}
         className={cn(
           "font-mono tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
           unit === undefined ? undefined : "pr-9",
