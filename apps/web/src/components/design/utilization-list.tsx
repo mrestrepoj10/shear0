@@ -50,7 +50,10 @@ export function UtilizationList({ report }: { report: WallReport }) {
     <Card size="sm" className="gap-2">
       <CardHeader>
         <div className="flex items-baseline justify-between gap-2">
-          <CardTitle className="font-mono text-xs font-medium tracking-tight text-muted-foreground">
+          <CardTitle
+            render={<h2 />}
+            className="font-mono text-xs font-medium tracking-tight text-muted-foreground"
+          >
             utilization
           </CardTitle>
           <span className="font-mono text-[11px] text-muted-foreground">

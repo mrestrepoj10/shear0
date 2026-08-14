@@ -1,3 +1,6 @@
+"use client"
+
+import { useRender } from "@base-ui/react/use-render"
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
@@ -33,17 +36,25 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="card-title"
-      className={cn(
+/**
+ * `render` is Base UI's polymorphism contract (the same one `Button` uses):
+ * pass an element and the title renders as that tag with these props merged.
+ * A card title is a section title, so on a page with a heading spine it should
+ * be a real heading — `render={<h2 />}` — without changing how it looks.
+ */
+function CardTitle({ className, render, ...props }: useRender.ComponentProps<"div">) {
+  return useRender({
+    render,
+    defaultTagName: "div",
+    props: {
+      "data-slot": "card-title",
+      className: cn(
         "font-heading text-base leading-snug font-medium group-data-[size=sm]/card:text-sm",
         className
-      )}
-      {...props}
-    />
-  )
+      ),
+      ...props,
+    },
+  })
 }
 
 function CardDescription({ className, ...props }: React.ComponentProps<"div">) {

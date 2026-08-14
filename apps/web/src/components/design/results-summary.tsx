@@ -120,7 +120,11 @@ export function VerdictStrip({ report }: { report: WallReport }) {
 
   return (
     <div className="sticky top-12 z-30 -mx-4 border-b border-border bg-background/85 px-4 py-2.5 backdrop-blur">
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+      {/* The verdict is the one thing on the page that changes without being
+          touched — every keystroke anywhere can flip it. The live region is
+          this row, which is always mounted and always one line tall, so a flip
+          re-announces the sentence instead of the container's arrival. */}
+      <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <div className="flex items-center gap-2">
           <StatusBadge status={status} className="h-6 px-2 text-xs" />
           <span className={cn("text-sm", statusText(status))}>
@@ -203,16 +207,22 @@ function CheckList({
   title,
   subtitle,
   checks,
+  heading,
 }: {
   title: string;
   subtitle?: string;
   checks: CheckResult[];
+  /** h2 for the wall-level list, h3 for the load cases nested under it */
+  heading: "h2" | "h3";
 }) {
   return (
     <Card size="sm" className="gap-2">
       <CardHeader>
         <div className="flex items-baseline justify-between gap-2">
-          <CardTitle className="font-mono text-xs font-medium tracking-tight text-muted-foreground">
+          <CardTitle
+            render={heading === "h2" ? <h2 /> : <h3 />}
+            className="font-mono text-xs font-medium tracking-tight text-muted-foreground"
+          >
             {title}
           </CardTitle>
           {subtitle === undefined ? null : (
@@ -243,13 +253,14 @@ function demandSummary(demand: Demands): string {
 export function ResultsSummary({ report }: { report: WallReport }) {
   return (
     <div className="flex flex-col gap-3">
-      <CheckList title="wall" checks={report.general} />
+      <CheckList title="wall" checks={report.general} heading="h2" />
       {report.perDemand.map((group) => (
         <CheckList
           key={group.demand.id}
           title={group.demand.label ?? group.demand.id}
           subtitle={demandSummary(group.demand)}
           checks={group.checks}
+          heading="h3"
         />
       ))}
     </div>

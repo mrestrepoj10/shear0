@@ -48,9 +48,16 @@ function Workspace({ linkFailed }: { linkFailed: boolean }) {
 
   return (
     <div className="mx-auto max-w-7xl px-4 pb-16">
+      {/* The page's one h1. The workspace is all chrome — every visible title
+          belongs to a panel — so the document needs a name of its own before
+          the h2s underneath it mean anything. */}
+      <h1 className="sr-only">shear wall design</h1>
+
       {report === null ? (
         <div className="sticky top-12 z-30 -mx-4 border-b border-border bg-background/85 px-4 py-2.5 backdrop-blur">
-          <span className="text-sm text-status-ng">cannot evaluate this wall</span>
+          <span role="status" aria-live="polite" className="text-sm text-status-ng">
+            cannot evaluate this wall
+          </span>
         </div>
       ) : (
         <VerdictStrip report={report} />
