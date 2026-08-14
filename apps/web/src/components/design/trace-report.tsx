@@ -32,6 +32,7 @@ import { checkTitle } from "@/components/design/results-summary";
 import { RefBadge, StatusBadge, statusText } from "@/components/design/status";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { notify } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -164,7 +165,19 @@ function CopyButton({
 
   const onCopy = useCallback(() => {
     void writeClipboard(markdown()).then((ok) => {
-      if (ok) setCopied(true);
+      // Success stays here, at the button — nine copy buttons share this page
+      // and a toast apiece would be noise. Failure has nowhere else to go: the
+      // shared id keeps a repeated click replacing one toast, not stacking.
+      if (ok) {
+        setCopied(true);
+        return;
+      }
+      notify({
+        id: "clipboard-failed",
+        title: "couldn't copy to the clipboard",
+        description: "your browser blocked clipboard access — select the report and copy manually",
+        duration: 6000,
+      });
     });
   }, [markdown]);
 
