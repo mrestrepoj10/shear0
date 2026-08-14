@@ -26,7 +26,7 @@ import {
   type WallInput,
 } from "@kern/engine";
 import { Check, ChevronRight, Copy } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Tex } from "@/components/design/tex";
 import { checkTitle } from "@/components/design/results-summary";
 import { RefBadge, StatusBadge, statusText } from "@/components/design/status";
@@ -213,6 +213,9 @@ function TraceRow({
   // The check root opens one level; everything deeper starts closed.
   const expanded = overrides[view.path] ?? view.depth === 0;
   const showMath = expanded && (node.formula !== undefined || node.substitution !== undefined);
+  // The list of inputs this row expands. The <ul> stays mounted (empty when
+  // collapsed) so `aria-controls` always points at something real.
+  const inputsId = useId();
 
   return (
     <li className={cn(view.depth > 0 && "border-l border-border pl-3")}>
@@ -222,7 +225,11 @@ function TraceRow({
             type="button"
             onClick={() => onToggle(view.path, !expanded)}
             aria-expanded={expanded}
-            className="-ml-1 flex size-4 shrink-0 translate-y-0.5 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+            aria-controls={inputsId}
+            /* 24 × 24 of target around a 12 px glyph. The negative margins give
+               the layout back exactly the 12 px the old size-4 box occupied, so
+               the row keeps its rhythm and the chevron does not move. */
+            className="-my-1 -mr-1 -ml-2 flex size-6 shrink-0 translate-y-0.5 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
           >
             <ChevronRight
               className={cn("size-3 transition-transform", expanded && "rotate-90")}
@@ -273,11 +280,13 @@ function TraceRow({
         <p className="mb-1 ml-3 pl-3 text-[11px] text-muted-foreground italic">{node.note}</p>
       ) : null}
 
-      {expanded && hasChildren ? (
-        <ul className="ml-3 flex flex-col">
-          {view.children.map((child) => (
-            <TraceRow key={child.path} view={child} overrides={overrides} onToggle={onToggle} />
-          ))}
+      {hasChildren ? (
+        <ul id={inputsId} className="ml-3 flex flex-col">
+          {expanded
+            ? view.children.map((child) => (
+                <TraceRow key={child.path} view={child} overrides={overrides} onToggle={onToggle} />
+              ))
+            : null}
         </ul>
       ) : null}
     </li>
@@ -292,6 +301,9 @@ function CheckTrace({ check, scope }: { check: CheckResult; scope: string }) {
   // A failing check is the reason you opened this panel — start it open.
   const [open, setOpen] = useState(check.status === "ng");
   const [overrides, setOverrides] = useState<Record<string, boolean | undefined>>({});
+  // Same contract as TraceRow: the panel element is always mounted so the
+  // trigger's `aria-controls` resolves whether it is open or not.
+  const panelId = useId();
   const views = useMemo(() => buildCheckView(check), [check]);
   const markdown = useCallback(() => traceToMarkdown(check), [check]);
 
@@ -308,7 +320,10 @@ function CheckTrace({ check, scope }: { check: CheckResult; scope: string }) {
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+          aria-controls={panelId}
+          /* the row is 32 px tall; the trigger now fills it instead of
+             leaving a 20 px strip of it dead */
+          className="-my-1.5 flex min-w-0 flex-1 items-center gap-2 rounded py-1.5 text-left focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
         >
           <ChevronRight
             className={cn(
@@ -339,16 +354,18 @@ function CheckTrace({ check, scope }: { check: CheckResult; scope: string }) {
         />
       </div>
 
-      {open ? (
-        <div className="px-3 pb-3">
-          <p className="pb-1 font-mono text-[10px] text-muted-foreground">{scope}</p>
-          <ul className="flex flex-col">
-            {views.map((view) => (
-              <TraceRow key={view.path} view={view} overrides={overrides} onToggle={toggle} />
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      <div id={panelId} className={open ? "px-3 pb-3" : undefined}>
+        {open ? (
+          <>
+            <p className="pb-1 font-mono text-[10px] text-muted-foreground">{scope}</p>
+            <ul className="flex flex-col">
+              {views.map((view) => (
+                <TraceRow key={view.path} view={view} overrides={overrides} onToggle={toggle} />
+              ))}
+            </ul>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -435,7 +452,10 @@ export function TraceReport({
     <Card size="sm" className="gap-2">
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
-          <CardTitle className="font-mono text-xs font-medium tracking-tight text-muted-foreground">
+          <CardTitle
+            render={<h2 />}
+            className="font-mono text-xs font-medium tracking-tight text-muted-foreground"
+          >
             calculation trace
           </CardTitle>
           <CopyButton markdown={markdown} label="copy full report" />
