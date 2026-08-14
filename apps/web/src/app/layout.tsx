@@ -19,6 +19,36 @@ export const metadata: Metadata = {
   description: "Shear wall design, per ACI 318-19.",
 };
 
+const REPO = "https://github.com/frame-labs/kern";
+
+/**
+ * The engineering disclaimer, on every page. Deliberately quiet — an engineer
+ * should not have to dismiss it — but never absent: kern produces calculations
+ * that a licensed engineer has to own.
+ */
+function Footer() {
+  return (
+    <footer className="mt-16 border-t border-border">
+      <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-2 gap-y-1 px-4 py-4 text-xs text-muted-foreground">
+        <span>for engineering review — verify every result with a licensed engineer</span>
+        <span aria-hidden="true">·</span>
+        <a
+          href={`${REPO}/blob/main/LICENSE`}
+          target="_blank"
+          rel="noreferrer"
+          className="hover:text-foreground"
+        >
+          MIT
+        </a>
+        <span aria-hidden="true">·</span>
+        <a href={REPO} target="_blank" rel="noreferrer" className="hover:text-foreground">
+          github
+        </a>
+      </div>
+    </footer>
+  );
+}
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
@@ -35,6 +65,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         >
           <Navbar />
           <main className="flex-1">{children}</main>
+          <Footer />
         </ThemeProvider>
       </body>
     </html>
