@@ -48,7 +48,7 @@ export default function LearnPage() {
                     <span className="min-w-0 flex-1 text-sm">{topic.title}</span>
                     <RefBadge refer={topic.ref} className="shrink-0" />
                   </div>
-                  <p className="font-sans text-[11px] leading-4 text-muted-foreground">
+                  <p className="font-sans text-xs leading-4 text-muted-foreground">
                     {topic.blurb}
                   </p>
                 </Link>
