@@ -80,6 +80,15 @@ const PRESET_ORDER: { id: PresetId; label: string }[] = [
   { id: "blank", label: "blank" },
 ];
 
+/**
+ * The presets pre-encoded once, at module scope: the presets are constants, so
+ * re-encoding all three on every keystroke was pure waste.
+ */
+const PRESET_CODES: { id: PresetId; code: string }[] = PRESET_ORDER.map(({ id }) => ({
+  id,
+  code: encodeWallInput(PRESETS[id]),
+}));
+
 /** ρ = n_c·A_b/(s·h), the same expression the 11.6 check traces. */
 function rho(layer: DistributedLayer, h: number): number {
   return (layer.curtains * BARS[layer.bar].Ab) / (layer.spacing * h);
@@ -837,8 +846,8 @@ interface PanelProps {
 /** Which preset the current wall still *is*, by the same bytes the URL carries. */
 function activePreset(input: WallInput): PresetId | null {
   const encoded = encodeWallInput(input);
-  for (const { id } of PRESET_ORDER) {
-    if (encodeWallInput(PRESETS[id]) === encoded) return id;
+  for (const { id, code } of PRESET_CODES) {
+    if (code === encoded) return id;
   }
   return null;
 }
