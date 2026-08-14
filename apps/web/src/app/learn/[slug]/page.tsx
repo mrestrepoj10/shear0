@@ -94,7 +94,9 @@ export default async function LearnTopicPage({ params }: PageProps<"/learn/[slug
       )}
 
       {cases.map(({ item, check }) => (
-        <section key={item.id} id={item.id} className="mt-10 min-w-0">
+        // `scroll-mt-16`: the header is sticky and 48 px tall, so a deep link
+        // to a case has to clear it.
+        <section key={item.id} id={item.id} className="mt-10 min-w-0 scroll-mt-16">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border pb-2">
             <h2 className="font-mono text-xs tracking-tight text-foreground">{item.label}</h2>
             {item.demand === undefined ? null : (

@@ -64,8 +64,18 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           enableSystem
           disableTransitionOnChange
         >
+          {/* First tab stop on every page: five pieces of chrome sit ahead of
+              the content otherwise. Hidden until it is focused. */}
+          <a
+            href="#main"
+            className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-100 focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:ring-2 focus:ring-ring"
+          >
+            skip to content
+          </a>
           <Navbar />
-          <main className="flex-1">{children}</main>
+          <main id="main" tabIndex={-1} className="flex-1 scroll-mt-16 outline-none">
+            {children}
+          </main>
           <Footer />
           {/* One toaster for the whole app; see `ui/sonner.tsx` for the rules. */}
           <Toaster />

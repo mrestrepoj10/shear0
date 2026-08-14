@@ -10,12 +10,12 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur">
       <div className="mx-auto flex h-12 max-w-5xl items-center gap-6 px-4">
-        <Link href="/" className="text-sm font-semibold tracking-tight">
+        <Link href="/" className="py-1.5 text-sm font-semibold tracking-tight">
           kern
         </Link>
         <nav className="flex items-center gap-4 text-sm text-muted-foreground">
           {links.map((l) => (
-            <Link key={l.href} href={l.href} className="hover:text-foreground">
+            <Link key={l.href} href={l.href} className="py-1.5 hover:text-foreground">
               {l.label}
             </Link>
           ))}
@@ -25,7 +25,7 @@ export function Navbar() {
             href="https://github.com/mrestrepoj10/kern"
             target="_blank"
             rel="noreferrer"
-            className="px-2 text-sm text-muted-foreground hover:text-foreground"
+            className="px-2 py-1.5 text-sm text-muted-foreground hover:text-foreground"
           >
             github
           </a>
