@@ -8,7 +8,7 @@
 
 import { fmt, type CheckResult, type WallReport } from "@kern/engine";
 import { checkTitle, governingCheck } from "@/components/design/results-summary";
-import { RefBadge, UtilizationBar, statusText } from "@/components/design/status";
+import { RefBadge, StatusBadge, UtilizationBar, statusText } from "@/components/design/status";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -75,6 +75,12 @@ export function UtilizationList({ report }: { report: WallReport }) {
                 )}
               >
                 <div className="flex min-w-0 items-baseline gap-2">
+                  {/* Pass is neutral here, so a failing or warned row cannot be
+                      found by colour alone. The badge says the word, exactly as
+                      the summary and trace rows do. */}
+                  {row.check.status === "ok" ? null : (
+                    <StatusBadge status={row.check.status} className="shrink-0 self-center" />
+                  )}
                   <span
                     className={cn(
                       "min-w-0 truncate text-[13px]",

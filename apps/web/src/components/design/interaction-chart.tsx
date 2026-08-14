@@ -276,13 +276,16 @@ function Swatch({ dashed, children }: { dashed?: boolean; children: ReactNode })
   );
 }
 
+/** Mirrors the plotted markers: pass is a filled neutral dot, ng a hollow ring. */
 function Dot({ token, children }: { token: "ok" | "ng"; children: ReactNode }) {
   return (
     <span className="flex items-center gap-1.5">
       <span
         className={cn(
-          "size-2 rounded-full",
-          token === "ok" ? "bg-status-ok" : "bg-status-ng",
+          "rounded-full",
+          token === "ok"
+            ? "size-2 bg-foreground"
+            : "size-2.5 border-2 border-status-ng bg-transparent",
         )}
       />
       {children}

@@ -10,10 +10,11 @@
  *
  * Two rules the app's colour system imposes:
  *
- * - **Monochrome.** `globals.css` reserves the only two hues (`--status-ok` /
- *   `--status-ng`) for check outcomes. A green "copied" toast would read as a
- *   passing ACI check. So: no `richColors`, no `toast.success`, no
- *   `toast.error` — the words carry the meaning.
+ * - **Monochrome.** The app spends exactly one hue, `--status-ng`, and only on a
+ *   failing check; passing is neutral and `--status-ok` is held in reserve. A
+ *   green "copied" toast would be the loudest affirmative colour on the page.
+ *   So: no `richColors`, no `toast.success`, no `toast.error` — the words carry
+ *   the meaning.
  * - **A resolved theme, never `"system"`.** next-themes lets the user override
  *   the OS, and Sonner's own `"system"` does not know about that override, so
  *   the two would disagree. `undefined` (first paint, before the theme is

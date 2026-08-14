@@ -340,8 +340,15 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
         <Swatch dashed>computed · 1.5δu/hwcs demand</Swatch>
         {provided === undefined ? null : (
           <span className="flex items-center gap-1.5">
+            {/* Same vocabulary as the marker on the plot: filled neutral when
+                the provided width works, a hollow ng ring when it does not. */}
             <span
-              className={cn("size-2 rounded-full", passes ? "bg-status-ok" : "bg-status-ng")}
+              className={cn(
+                "rounded-full",
+                passes
+                  ? "size-2 bg-foreground"
+                  : "size-2.5 border-2 border-status-ng bg-transparent",
+              )}
             />
             b provided
           </span>

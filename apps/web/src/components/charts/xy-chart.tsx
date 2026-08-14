@@ -99,11 +99,17 @@ export interface XyChartProps<M = unknown> {
  * the theme class flips. The fallbacks below are what the server renders; the
  * first client effect replaces them, so SSR and hydration see the same markup.
  */
+/**
+ * `ok` paints with `--foreground` on purpose: saturation in this app means a
+ * check *failed*, so a passing marker is a plain dark dot. `--status-ok` stays
+ * defined in `globals.css` as a reserved accent, but nothing on the page spends
+ * it. See the header of `design/status.tsx`.
+ */
 const TOKEN_VARS: Record<ChartToken, string> = {
   line: "--foreground",
   muted: "--muted-foreground",
   grid: "--border",
-  ok: "--status-ok",
+  ok: "--foreground",
   ng: "--status-ng",
 };
 
@@ -244,15 +250,18 @@ export function XyChart<M = unknown>({
           ...(s.opacity === undefined ? {} : { strokeOpacity: s.opacity }),
         }),
       ),
+      // A failing marker differs from a passing one by shape before it differs
+      // by colour — hollow, larger, heavier stroke — so the point that is
+      // outside the surface stays findable when the hues collapse (ok/ng
+      // measure 1.21:1 under deuteranopia) or when the plot is printed grey.
       ...[...markerTokens.entries()].map(([token, rows]) =>
         dot(rows, {
           id: `markers-${token}`,
           x: "x",
           y: "y",
-          r: 4.5,
-          fill: palette[token],
-          stroke: palette[token],
-          strokeWidth: 1,
+          ...(token === "ng"
+            ? { r: 6, fill: "transparent", stroke: palette.ng, strokeWidth: 2 }
+            : { r: 4.5, fill: palette[token], stroke: palette[token], strokeWidth: 1 }),
         }),
       ),
       ...(anchors.length === 0
