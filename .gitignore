@@ -7,3 +7,10 @@ dist/
 .DS_Store
 *.tsbuildinfo
 .vercel
+
+# Reference PDFs (copyrighted, large)
+/references/
+
+# Next.js auto-generated agent files
+apps/web/AGENTS.md
+apps/web/CLAUDE.md
