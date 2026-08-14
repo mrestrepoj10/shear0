@@ -241,7 +241,12 @@ export function SelectField<T extends string>({
           }
         </SelectValue>
       </SelectTrigger>
-      <SelectContent>
+      {/* `alignItemWithTrigger` (the default) pins the selected option over the
+          trigger, and the primitive turns every enter animation off when it
+          does — the zoom/fade on `SelectContent` was dead code. Anchored under
+          the trigger the popup animates, and the nine-item bar list opens as a
+          list instead of arriving pre-scrolled with its top cut off. */}
+      <SelectContent alignItemWithTrigger={false} align="start">
         {options.map((option) => (
           <SelectItem key={option.value} value={option.value} className="font-mono">
             {option.label}
