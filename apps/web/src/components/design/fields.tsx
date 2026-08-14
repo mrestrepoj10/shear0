@@ -84,10 +84,14 @@ export function FieldRow({
           {/* The hint sits outside the label: it describes the field, it does
               not name it, and a name of "wall type Table 11.3.1.1" helps nobody. */}
           <Label htmlFor={id} className="block min-w-0 text-xs leading-tight font-normal">
-            <span className="block truncate">{label}</span>
+            {/* "height above crit. section hwcs" clips at 1280 px; the tooltip
+                is the only way back to the whole label. */}
+            <span className="block truncate" title={typeof label === "string" ? label : undefined}>
+              {label}
+            </span>
           </Label>
           {hint === undefined ? null : (
-            <span id={hintId} className="block truncate text-[11px] text-muted-foreground">
+            <span id={hintId} className="block truncate text-xs2 text-muted-foreground">
               {hint}
             </span>
           )}
@@ -101,7 +105,7 @@ export function FieldRow({
 /** A read-only line of engine-derived arithmetic, shown where an engineer expects it. */
 export function DerivedRow({ label, value }: { label: ReactNode; value: ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 text-[11px] text-muted-foreground">
+    <div className="flex items-baseline justify-between gap-3 text-xs2 text-muted-foreground">
       <span className="truncate">{label}</span>
       <span className="shrink-0 tabular-nums">{value}</span>
     </div>
@@ -194,13 +198,13 @@ export function NumberField({
           )}
         />
         {unit === undefined ? null : (
-          <span className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-[11px] text-muted-foreground">
+          <span className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-xs2 text-muted-foreground">
             {unit}
           </span>
         )}
       </div>
       {invalid ? (
-        <p id={messageId} className="text-[11px] leading-tight text-destructive">
+        <p id={messageId} className="text-xs2 leading-tight text-destructive">
           {invalidMessage}
         </p>
       ) : null}

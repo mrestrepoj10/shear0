@@ -85,12 +85,23 @@ export function checkTitle(title: string): string {
   return title.toLowerCase().replace(/\bp–m\b/g, "P–M").replace(/\baci\b/g, "ACI");
 }
 
-const VERDICT_TEXT: Record<CheckStatus, string> = {
+/**
+ * The verdict sentence for every outcome that is not a failure. `ng` is absent
+ * on purpose: a failing wall says *how many* checks failed, and "check fails"
+ * was singular however many did.
+ */
+const VERDICT_TEXT: Record<Exclude<CheckStatus, "ng">, string> = {
   ok: "all checks pass",
-  ng: "check fails",
   warning: "passes with warnings",
   na: "nothing to check",
 };
+
+function failingCount(report: WallReport): number {
+  const failing = (checks: CheckResult[]) => checks.filter((c) => c.status === "ng").length;
+  return (
+    failing(report.general) + report.perDemand.reduce((n, group) => n + failing(group.checks), 0)
+  );
+}
 
 /**
  * A wall carrying no load at all: every check that needs a demand passes on
@@ -117,6 +128,12 @@ export function VerdictStrip({ report }: { report: WallReport }) {
   // demands (detailing, ρ_min) is still an ng, loads or no loads.
   const unloaded = report.status !== "ng" && hasNoLoads(report);
   const status = unloaded ? "na" : report.status;
+  const failing = failingCount(report);
+  const verdict = unloaded
+    ? "no loads applied — enter a load case"
+    : report.status === "ng"
+      ? `${failing} check${failing === 1 ? "" : "s"} ${failing === 1 ? "fails" : "fail"}`
+      : VERDICT_TEXT[report.status];
 
   return (
     <div className="sticky top-12 z-30 -mx-4 border-b border-border bg-background/85 px-4 py-2.5 backdrop-blur">
@@ -127,9 +144,7 @@ export function VerdictStrip({ report }: { report: WallReport }) {
       <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <div className="flex items-center gap-2">
           <StatusBadge status={status} className="h-6 px-2 text-xs" />
-          <span className={cn("text-sm", statusText(status))}>
-            {unloaded ? "no loads applied — enter a load case" : VERDICT_TEXT[report.status]}
-          </span>
+          <span className={cn("text-sm", statusText(status))}>{verdict}</span>
           <span className="text-xs text-muted-foreground">
             {total} check{total === 1 ? "" : "s"}
           </span>
@@ -137,14 +152,24 @@ export function VerdictStrip({ report }: { report: WallReport }) {
         {governing === null ? null : (
           <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
             <span className="shrink-0">governing</span>
-            <span className="truncate text-foreground">
+            {/* The title is the sentence; the ref is a footnote to it. At 390 px
+                the strip used to spend its width on the badge and clip the name
+                of the check driving the design, so the ref steps aside first. */}
+            <span
+              className="min-w-0 truncate text-foreground"
+              title={`${checkTitle(governing.check.title)}${
+                governing.demand === null
+                  ? ""
+                  : ` · ${governing.demand.label ?? governing.demand.id}`
+              }`}
+            >
               {checkTitle(governing.check.title)}
               {governing.demand === null
                 ? ""
                 : ` · ${governing.demand.label ?? governing.demand.id}`}
             </span>
-            <RefBadge refer={governing.check.ref} />
-            <span className={cn("tabular-nums", statusText(governing.check.status))}>
+            <RefBadge refer={governing.check.ref} className="hidden shrink-0 sm:inline-flex" />
+            <span className={cn("shrink-0 tabular-nums", statusText(governing.check.status))}>
               {fmt(governing.utilization, { dp: 2 })}
             </span>
           </div>
@@ -178,7 +203,11 @@ function CheckRow({ check }: { check: CheckResult }) {
     <li className="flex flex-col gap-1.5 border-b border-border px-3 py-2.5 last:border-b-0">
       <div className="flex items-center gap-2">
         <StatusBadge status={check.status} />
-        <span className="min-w-0 flex-1 truncate text-sm">{checkTitle(check.title)}</span>
+        {/* Truncation with no recovery: at 1024 px these clip to ~16 characters
+            and the full name was nowhere on the page. */}
+        <span className="min-w-0 flex-1 truncate text-sm" title={checkTitle(check.title)}>
+          {checkTitle(check.title)}
+        </span>
         <RefBadge refer={check.ref} />
         <span
           className={cn(
@@ -190,7 +219,7 @@ function CheckRow({ check }: { check: CheckResult }) {
         </span>
       </div>
       <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate font-mono text-xs2 text-muted-foreground">
           {ratioLine(check)}
         </span>
       </div>
@@ -227,7 +256,7 @@ function CheckList({
             {title}
           </CardTitle>
           {subtitle === undefined ? null : (
-            <span className="truncate font-mono text-[11px] text-muted-foreground">{subtitle}</span>
+            <span className="truncate font-mono text-xs2 text-muted-foreground">{subtitle}</span>
           )}
         </div>
       </CardHeader>

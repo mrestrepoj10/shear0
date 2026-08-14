@@ -56,8 +56,11 @@ export function UtilizationList({ report }: { report: WallReport }) {
           >
             utilization
           </CardTitle>
-          <span className="font-mono text-[11px] text-muted-foreground">
-            {all.length} check{all.length === 1 ? "" : "s"} · demand / capacity
+          {/* Not every row is a demand / capacity ratio — spacing and ρ_min
+              checks report a ratio of their own — so the subtitle names what
+              the column actually holds. */}
+          <span className="font-mono text-xs2 text-muted-foreground">
+            {all.length} check{all.length === 1 ? "" : "s"} · utilization
           </span>
         </div>
       </CardHeader>
@@ -82,14 +85,15 @@ export function UtilizationList({ report }: { report: WallReport }) {
                     <StatusBadge status={row.check.status} className="shrink-0 self-center" />
                   )}
                   <span
+                    title={checkTitle(row.check.title)}
                     className={cn(
-                      "min-w-0 truncate text-[13px]",
+                      "min-w-0 truncate text-sm2",
                       isGoverning ? "text-foreground" : "text-muted-foreground",
                     )}
                   >
                     {checkTitle(row.check.title)}
                   </span>
-                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                  <span className="shrink-0 font-mono text-2xs text-muted-foreground">
                     {row.scope}
                   </span>
                   <RefBadge refer={row.check.ref} className="shrink-0" />
@@ -105,7 +109,7 @@ export function UtilizationList({ report }: { report: WallReport }) {
                 )}
                 <span
                   className={cn(
-                    "text-right font-mono text-[11px] tabular-nums",
+                    "text-right font-mono text-xs2 tabular-nums",
                     statusText(row.check.status),
                     isGoverning && "font-medium",
                   )}
