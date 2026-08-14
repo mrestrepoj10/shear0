@@ -18,7 +18,7 @@ import {
   type WallReport,
   type WallInput,
 } from "@kern/engine";
-import { useMemo, useState, type ReactNode } from "react";
+import { memo, useMemo, useState, type ReactNode } from "react";
 import { XyChart, type ChartToken, type XyFocus, type XyMarker, type XySeries } from "@/components/charts/xy-chart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { num, statusText } from "@/components/design/status";
@@ -73,7 +73,12 @@ function tokenFor(status: CheckStatus | undefined): ChartToken {
   return "line";
 }
 
-export function InteractionChart({
+/**
+ * `memo` so the deferred wall the workspace passes in actually saves work: 240
+ * fiber solves and a chart scene rebuild are skipped while the props still point
+ * at the wall of the previous keystroke.
+ */
+export const InteractionChart = memo(function InteractionChart({
   input,
   report,
 }: {
@@ -177,7 +182,7 @@ export function InteractionChart({
       </CardContent>
     </Card>
   );
-}
+});
 
 function Swatch({ dashed, children }: { dashed?: boolean; children: ReactNode }) {
   return (

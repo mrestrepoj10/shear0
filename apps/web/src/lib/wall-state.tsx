@@ -29,6 +29,7 @@ import {
 import {
   createContext,
   useContext,
+  useDeferredValue,
   useMemo,
   useReducer,
   useState,
@@ -253,9 +254,16 @@ export function useSetSelection(): (next: Selection) => void {
   return useContext(SetSelectionContext);
 }
 
+/** A wall paired with the engine run for exactly that wall. */
+interface WallView {
+  input: WallInput;
+  result: WallResult;
+}
+
 const WallInputContext = createContext<WallInput | null>(null);
 const WallDispatchContext = createContext<Dispatch<WallAction> | null>(null);
 const WallResultContext = createContext<WallResult | null>(null);
+const DeferredWallContext = createContext<WallView | null>(null);
 
 export function WallProvider({
   children,
@@ -269,13 +277,24 @@ export function WallProvider({
   // Synchronous on every keystroke — the full check set runs in ~1 ms.
   const result = useMemo(() => runChecks(input), [input]);
 
+  // Deferred *rendering* only: the reducer and the engine still run on every
+  // keystroke, but the expensive surfaces (drawings, charts) re-render at
+  // transition priority off this copy, so a half-typed number no longer rebuilds
+  // three drawings and two chart scenes before the next character lands. Input
+  // and result travel as one object so a deferred drawing can never be paired
+  // with a report from a different wall.
+  const view = useMemo<WallView>(() => ({ input, result }), [input, result]);
+  const deferred = useDeferredValue(view);
+
   return (
     <WallInputContext value={input}>
       <WallDispatchContext value={dispatch}>
         <WallResultContext value={result}>
-          <SetSelectionContext value={setSelection}>
-            <SelectionContext value={selection}>{children}</SelectionContext>
-          </SetSelectionContext>
+          <DeferredWallContext value={deferred}>
+            <SetSelectionContext value={setSelection}>
+              <SelectionContext value={selection}>{children}</SelectionContext>
+            </SetSelectionContext>
+          </DeferredWallContext>
         </WallResultContext>
       </WallDispatchContext>
     </WallInputContext>
@@ -298,4 +317,28 @@ export function useWallResult(): WallResult {
   const value = useContext(WallResultContext);
   if (value === null) throw new Error("useWallResult must be used inside <WallProvider>");
   return value;
+}
+
+/**
+ * The wall the heavy visual surfaces should draw: the same wall, allowed to lag
+ * one render behind while the user is still typing. Only <WallCanvas>, the
+ * interaction chart and the drift panel read this — the verdict, the summary and
+ * the derived rows stay on `useWallInput`/`useWallResult` so the numbers an
+ * engineer is watching never lag their keystroke.
+ *
+ * Falls back to the live wall whenever the deferred copy failed to evaluate, so
+ * a momentarily invalid wall never blanks the drawings; returns null only when
+ * the live wall itself cannot be evaluated (the caller renders the error panel).
+ */
+export function useDeferredWallView(): { input: WallInput; report: WallReport } | null {
+  const input = useWallInput();
+  const { report } = useWallResult();
+  const deferred = useContext(DeferredWallContext);
+  if (deferred === null) {
+    throw new Error("useDeferredWallView must be used inside <WallProvider>");
+  }
+  if (deferred.result.report !== null) {
+    return { input: deferred.input, report: deferred.result.report };
+  }
+  return report === null ? null : { input, report };
 }

@@ -14,6 +14,7 @@
  */
 
 import { fmt, type WallReport, type WallInput } from "@kern/engine";
+import { memo } from "react";
 import { WallElevation } from "@/components/design/drawing/elevation";
 import { dim } from "@/components/design/drawing/format";
 import { WallPlanSection } from "@/components/design/drawing/plan-section";
@@ -68,7 +69,14 @@ function Plate({
   );
 }
 
-export function WallCanvas({ input, report }: WallCanvasProps) {
+/**
+ * `memo` is what makes the caller's deferred wall worth anything: while a
+ * keystroke is being processed the props still point at the previous wall, so
+ * the three drawings skip the urgent render entirely and rebuild once, at
+ * transition priority. Same props in, same drawing out — nothing here reads
+ * context that could change underneath it.
+ */
+export const WallCanvas = memo(function WallCanvas({ input, report }: WallCanvasProps) {
   const { geometry } = input;
   const governing = governingDemand(report);
 
@@ -109,4 +117,4 @@ export function WallCanvas({ input, report }: WallCanvasProps) {
       </div>
     </div>
   );
-}
+});
