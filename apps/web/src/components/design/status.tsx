@@ -68,7 +68,7 @@ export function StatusBadge({
       variant="secondary"
       data-status={status}
       className={cn(
-        "rounded-sm px-1.5 text-[11px] tracking-tight tabular-nums",
+        "rounded-sm px-1.5 text-xs2 tracking-tight tabular-nums",
         statusSurface(status),
         className,
       )}
@@ -85,7 +85,7 @@ export function RefBadge({ refer, className }: { refer: CodeRef; className?: str
       variant="outline"
       title={`${refer.standard} §${refer.section}${refer.eq ? ` (Eq. ${refer.eq})` : ""}`}
       className={cn(
-        "rounded-sm px-1.5 font-mono text-[11px] font-normal text-muted-foreground",
+        "rounded-sm px-1.5 font-mono text-xs2 font-normal text-muted-foreground",
         className,
       )}
     >

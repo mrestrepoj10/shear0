@@ -298,7 +298,7 @@ export function XyChart<M = unknown>({
        tick labels in tabular figures. */
     <div
       ref={host}
-      className={cn("w-full font-mono text-[10px] text-muted-foreground", className)}
+      className={cn("w-full font-mono text-2xs text-muted-foreground", className)}
     >
       <Chart
         definition={definition}

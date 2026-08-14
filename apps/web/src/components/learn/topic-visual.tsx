@@ -34,9 +34,9 @@ function Plate({
   return (
     <figure className="min-w-0 rounded-xl border border-border p-4">
       <figcaption className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 pb-3">
-        <span className="font-mono text-[11px] tracking-tight text-foreground">{title}</span>
+        <span className="font-mono text-xs2 tracking-tight text-foreground">{title}</span>
         {note === undefined ? null : (
-          <span className="font-mono text-[11px] tracking-tight text-muted-foreground">{note}</span>
+          <span className="font-mono text-xs2 tracking-tight text-muted-foreground">{note}</span>
         )}
       </figcaption>
       {children}

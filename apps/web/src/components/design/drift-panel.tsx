@@ -241,11 +241,11 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
           (0.2f&apos;c), so special boundary elements are{" "}
           {view.required ? "required" : "not required"}.
         </p>
-        <p className="font-mono text-[11px] leading-5 text-muted-foreground">
+        <p className="font-mono text-xs2 leading-5 text-muted-foreground">
           hwcs/ℓw &lt; 2.0, so the boundary element is judged by the extreme-fiber stress and Eq.
           (18.10.6.2b) does not apply — there is no width to trade against drift.
         </p>
-        <div className="flex flex-col gap-1 font-mono text-[11px]">
+        <div className="flex flex-col gap-1 font-mono text-xs2">
           <Readout label="σ" value={`${num(view.sigma)} psi`} scope={view.label} />
           <Readout label="0.2f'c" value={`${num(view.limit)} psi`} />
           <Readout label="0.15f'c — may discontinue below" value={`${num(view.discontinue)} psi`} />
@@ -253,7 +253,7 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
         {/* Neither branch is a failure: §18.10.6.3 either sends the wall to
             special boundary elements or to 18.10.6.5, and both are valid
             outcomes. Colouring "required" as ng said the wall was in trouble. */}
-        <p className="font-mono text-[11px] text-muted-foreground">
+        <p className="font-mono text-xs2 text-muted-foreground">
           {view.required
             ? "σ > 0.2f'c — special boundary elements required"
             : "σ ≤ 0.2f'c — 18.10.6.5 applies instead"}
@@ -297,7 +297,7 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
         />
       )}
 
-      <p aria-live="polite" className="min-h-8 font-mono text-[11px] leading-4 text-muted-foreground">
+      <p aria-live="polite" className="min-h-8 font-mono text-xs2 leading-4 text-muted-foreground">
         {focus === null ? (
           <>
             c = {num(view.c, 2)} in · V<sub>e</sub> = {num(view.Ve)} kip · {view.label}
@@ -315,7 +315,7 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
         )}
       </p>
 
-      <div className="flex flex-col gap-1 border-t border-border pt-2 font-mono text-[11px]">
+      <div className="flex flex-col gap-1 border-t border-border pt-2 font-mono text-xs2">
         <Readout
           label="δc/hwcs at the provided b"
           value={
@@ -337,7 +337,7 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
         <Readout label="option (ii) √(0.025cℓw)" value={`${num(view.sqrtReq, 1)} in`} />
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[10px] text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-2xs text-muted-foreground">
         <Swatch>δc/hwcs used</Swatch>
         <Swatch dashed>computed · 1.5δu/hwcs demand</Swatch>
         {provided === undefined ? null : (
@@ -371,7 +371,7 @@ function Panel({ subtitle, children }: { subtitle: string; children: ReactNode }
           >
             drift capacity
           </CardTitle>
-          <span className="truncate font-mono text-[11px] text-muted-foreground">{subtitle}</span>
+          <span className="truncate font-mono text-xs2 text-muted-foreground">{subtitle}</span>
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">{children}</CardContent>
@@ -394,7 +394,7 @@ function Readout({
     <div className="flex items-baseline justify-between gap-3">
       <span className="truncate text-muted-foreground">
         {label}
-        {scope === undefined ? null : <span className="ml-1.5 text-[10px]">{scope}</span>}
+        {scope === undefined ? null : <span className="ml-1.5 text-2xs">{scope}</span>}
       </span>
       <span className={cn("shrink-0 tabular-nums", tone === undefined ? "" : statusText(tone))}>
         {value}

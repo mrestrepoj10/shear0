@@ -28,6 +28,15 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  /*
+   * The three sizes the chrome actually uses below `text-xs`, registered so
+   * they are part of the scale instead of 72 ad-hoc `text-[Npx]` brackets.
+   * Deliberately no `--text-*--line-height`: the bracket sizes never set one
+   * either, so leading keeps inheriting from the row and nothing reflows.
+   */
+  --text-2xs: 0.625rem;
+  --text-xs2: 0.6875rem;
+  --text-sm2: 0.8125rem;
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -113,6 +122,29 @@
   html {
     @apply font-sans;
   }
+}
+
+/**
+ * KaTeX sizing.
+ *
+ * KaTeX ships `.katex { font-size: 1.21em }` so that stock-sized math sits
+ * comfortably in body copy. In a trace row the symbol and the number it equals
+ * are one sentence, and 1.21em made the symbol 31% larger than its own value
+ * (15.73 px beside 13 px). At 1em the two read as one size; display math keeps
+ * a hair of emphasis because it owns its line.
+ *
+ * Deliberately **not** in `@layer base`: `katex/dist/katex.min.css` is imported
+ * from `tex.tsx` as a plain stylesheet, so its rules are unlayered — and an
+ * unlayered rule beats every layered one whatever its specificity. Measured:
+ * inside `@layer base` these had no effect at all (`.katex` still computed
+ * 15.73 px). Unlayered and with the `html` prefix they outrank `.katex` on
+ * specificity too, so neither cascade layer nor file order can undo them.
+ */
+html .katex {
+  font-size: 1em;
+}
+.katex-display > .katex {
+  font-size: 1.05em;
 }
 
 /**

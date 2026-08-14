@@ -216,7 +216,7 @@ export function WallPlanSection({ input }: { input: WallInput }) {
 
   if (!(lw > 0) || !(h > 0)) {
     return (
-      <p className="py-6 text-center font-mono text-[11px] text-muted-foreground">
+      <p className="py-6 text-center font-mono text-xs2 text-muted-foreground">
         plan section needs ℓw and h greater than zero
       </p>
     );

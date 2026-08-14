@@ -32,8 +32,8 @@ export function StrainProfile({ input, Pu }: { input: WallInput; Pu: number }) {
   if (slice === undefined) {
     return (
       <div className="flex min-h-40 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border p-6 text-center">
-        <p className="font-mono text-[11px] text-muted-foreground">no governing slice</p>
-        <p className="max-w-64 font-mono text-[11px] text-muted-foreground/70">
+        <p className="font-mono text-xs2 text-muted-foreground">no governing slice</p>
+        <p className="max-w-64 font-mono text-xs2 text-muted-foreground/70">
           the section cannot equilibrate Pu = {dim(Pu, 0)} kip — there is no neutral-axis depth to
           draw
         </p>

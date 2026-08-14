@@ -186,7 +186,7 @@ function CopyButton({
       variant="ghost"
       size="xs"
       onClick={onCopy}
-      className={cn("font-mono text-[11px] text-muted-foreground", className)}
+      className={cn("font-mono text-xs2 text-muted-foreground", className)}
       aria-label={aria ?? label}
     >
       {copied ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
@@ -232,6 +232,7 @@ function TraceRow({
             className="-my-1 -mr-1 -ml-2 flex size-6 shrink-0 translate-y-0.5 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
           >
             <ChevronRight
+              strokeWidth={1.5}
               className={cn("size-3 transition-transform", expanded && "rotate-90")}
               aria-hidden="true"
             />
@@ -241,17 +242,17 @@ function TraceRow({
           <span className="-ml-1 size-4 shrink-0" aria-hidden="true" />
         )}
 
-        <span className="shrink-0 text-[13px] leading-5">
+        <span className="shrink-0 text-sm2 leading-5">
           <Tex>{node.symbol}</Tex>
         </span>
-        <span className="shrink-0 font-mono text-[12px] tabular-nums">= {valueText(node)}</span>
+        <span className="shrink-0 font-mono text-sm2 tabular-nums">= {valueText(node)}</span>
 
-        <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate text-xs2 text-muted-foreground">
           {view.repeated ? "shown above" : node.label}
         </span>
 
         {view.role === undefined ? null : (
-          <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+          <span className="shrink-0 font-mono text-2xs text-muted-foreground">
             {ROLE_LABEL[view.role]}
           </span>
         )}
@@ -262,7 +263,7 @@ function TraceRow({
       </div>
 
       {showMath ? (
-        <div className="mb-1 ml-3 flex flex-col gap-1 overflow-x-auto border-l border-dashed border-border py-1 pl-3 text-[13px]">
+        <div className="mb-1 ml-3 flex flex-col gap-1 overflow-x-auto border-l border-dashed border-border py-1 pl-3 text-sm2">
           {node.formula === undefined ? null : (
             <Tex display className="text-foreground">
               {node.formula}
@@ -277,7 +278,7 @@ function TraceRow({
       ) : null}
 
       {expanded && node.note !== undefined ? (
-        <p className="mb-1 ml-3 pl-3 text-[11px] text-muted-foreground italic">{node.note}</p>
+        <p className="mb-1 ml-3 pl-3 text-xs2 text-muted-foreground italic">{node.note}</p>
       ) : null}
 
       {hasChildren ? (
@@ -326,6 +327,7 @@ function CheckTrace({ check, scope }: { check: CheckResult; scope: string }) {
           className="-my-1.5 flex min-w-0 flex-1 items-center gap-2 rounded py-1.5 text-left focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
         >
           <ChevronRight
+            strokeWidth={1.5}
             className={cn(
               "size-3 shrink-0 text-muted-foreground transition-transform",
               open && "rotate-90",
@@ -338,7 +340,7 @@ function CheckTrace({ check, scope }: { check: CheckResult; scope: string }) {
         <RefBadge refer={check.ref} className="shrink-0" />
         <span
           className={cn(
-            "w-10 shrink-0 text-right font-mono text-[11px] tabular-nums",
+            "w-10 shrink-0 text-right font-mono text-xs2 tabular-nums",
             statusText(check.status),
           )}
         >
@@ -357,7 +359,7 @@ function CheckTrace({ check, scope }: { check: CheckResult; scope: string }) {
       <div id={panelId} className={open ? "px-3 pb-3" : undefined}>
         {open ? (
           <>
-            <p className="pb-1 font-mono text-[10px] text-muted-foreground">{scope}</p>
+            <p className="pb-1 font-mono text-2xs text-muted-foreground">{scope}</p>
             <ul className="flex flex-col">
               {views.map((view) => (
                 <TraceRow key={view.path} view={view} overrides={overrides} onToggle={toggle} />
@@ -488,7 +490,7 @@ export function TraceReport({
 
 function GroupLabel({ children }: { children: ReactNode }) {
   return (
-    <div className="border-b border-border bg-muted/40 px-3 py-1 font-mono text-[10px] text-muted-foreground">
+    <div className="border-b border-border bg-muted/40 px-3 py-1 font-mono text-2xs text-muted-foreground">
       {children}
     </div>
   );

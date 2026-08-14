@@ -22,6 +22,7 @@
  */
 
 import { fmt, type CheckResult, type Traced } from "@kern/engine";
+import { ChevronRight } from "lucide-react";
 import { Tex } from "@/components/design/tex";
 import { RefBadge, StatusBadge, statusText } from "@/components/design/status";
 import { cn } from "@/lib/utils";
@@ -115,23 +116,22 @@ const ROLE_LABEL: Record<Exclude<NodeRole, undefined>, string> = {
 // rows
 // ---------------------------------------------------------------------------
 
+/**
+ * The same `ChevronRight` /design's trace uses, at the same 1.5 stroke: this was
+ * a hand-rolled copy of lucide's own path, drawn two weights heavier than every
+ * other icon in the app and beside 400-weight mono. lucide renders in a server
+ * component, so the page stays zero-JS.
+ */
 function Chevron({ hidden }: { hidden?: boolean }) {
   if (hidden === true) {
     return <span className="-ml-1 size-4 shrink-0" aria-hidden="true" />;
   }
   return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
+    <ChevronRight
+      strokeWidth={1.5}
       aria-hidden="true"
       className="-ml-1 size-4 shrink-0 translate-y-0.5 p-0.5 text-muted-foreground transition-transform group-open:rotate-90"
-    >
-      <path d="m9 18 6-6-6-6" />
-    </svg>
+    />
   );
 }
 
@@ -139,15 +139,15 @@ function NodeHead({ view }: { view: TraceView }) {
   const { node } = view;
   return (
     <>
-      <span className="shrink-0 text-[13px] leading-5">
+      <span className="shrink-0 text-sm2 leading-5">
         <Tex>{node.symbol}</Tex>
       </span>
-      <span className="shrink-0 font-mono text-[12px] tabular-nums">= {valueText(node)}</span>
-      <span className="min-w-0 flex-1 text-[11px] text-muted-foreground">
+      <span className="shrink-0 font-mono text-sm2 tabular-nums">= {valueText(node)}</span>
+      <span className="min-w-0 flex-1 text-xs2 text-muted-foreground">
         {view.repeated ? "shown above" : node.label}
       </span>
       {view.role === undefined ? null : (
-        <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+        <span className="shrink-0 font-mono text-2xs text-muted-foreground">
           {ROLE_LABEL[view.role]}
         </span>
       )}
@@ -166,7 +166,7 @@ function NodeBody({ node }: { node: Traced<unknown> }) {
   return (
     <>
       {hasMath ? (
-        <div className="mb-1 ml-3 flex flex-col gap-1 overflow-x-auto border-l border-dashed border-border py-1 pl-3 text-[13px]">
+        <div className="mb-1 ml-3 flex flex-col gap-1 overflow-x-auto border-l border-dashed border-border py-1 pl-3 text-sm2">
           {node.formula === undefined ? null : (
             <Tex display className="text-foreground">
               {node.formula}
@@ -180,7 +180,7 @@ function NodeBody({ node }: { node: Traced<unknown> }) {
         </div>
       ) : null}
       {node.note === undefined ? null : (
-        <p className="mb-1 ml-3 pl-3 text-[11px] text-muted-foreground italic">{node.note}</p>
+        <p className="mb-1 ml-3 pl-3 text-xs2 text-muted-foreground italic">{node.note}</p>
       )}
     </>
   );
@@ -251,7 +251,7 @@ export function TraceWalkthrough({ check, scope }: TraceWalkthroughProps) {
         <RefBadge refer={check.ref} className="shrink-0" />
         <span
           className={cn(
-            "shrink-0 text-right font-mono text-[11px] tabular-nums",
+            "shrink-0 text-right font-mono text-xs2 tabular-nums",
             statusText(check.status),
           )}
         >
@@ -262,7 +262,7 @@ export function TraceWalkthrough({ check, scope }: TraceWalkthroughProps) {
       </div>
 
       <div className="px-3 py-2">
-        <p className="pb-1 font-mono text-[10px] text-muted-foreground">
+        <p className="pb-1 font-mono text-2xs text-muted-foreground">
           {scope === undefined ? `${total} steps` : `${scope} · ${total} steps`} · every step open —
           collapse any row to fold its inputs away
         </p>

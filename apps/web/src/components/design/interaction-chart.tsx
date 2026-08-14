@@ -156,7 +156,7 @@ export const InteractionChart = memo(function InteractionChart({
           >
             P–M interaction
           </CardTitle>
-          <span className="truncate font-mono text-[11px] text-muted-foreground">
+          <span className="truncate font-mono text-xs2 text-muted-foreground">
             ACI 318-19 §22.2 / §22.4
           </span>
         </div>
@@ -177,7 +177,7 @@ export const InteractionChart = memo(function InteractionChart({
 
         <Readout focus={focus} cap={cap} markers={markers} />
 
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[10px] text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-2xs text-muted-foreground">
           <Swatch dashed>nominal</Swatch>
           <Swatch>design (φ applied)</Swatch>
           {markers.some((m) => m.token === "ok") ? <Dot token="ok">demand inside</Dot> : null}
@@ -310,7 +310,7 @@ function Readout({
 
   if (focus === null || meta === undefined) {
     return (
-      <p aria-live="polite" className="min-h-8 font-mono text-[11px] leading-4 text-muted-foreground">
+      <p aria-live="polite" className="min-h-8 font-mono text-xs2 leading-4 text-muted-foreground">
         φP<sub>n</sub> capped at 0.65 × 0.80 P<sub>o</sub> = {num(cap)} kip (22.4.2.1) — the flat
         top.
         <br />
@@ -321,7 +321,7 @@ function Readout({
 
   if (meta.kind === "demand") {
     return (
-      <p aria-live="polite" className="min-h-8 font-mono text-[11px] leading-4">
+      <p aria-live="polite" className="min-h-8 font-mono text-xs2 leading-4">
         <span className={statusText(meta.status)}>{focus.label}</span>{" "}
         <span className="text-muted-foreground">
           M<sub>u</sub> = {num(focus.x)} kip-ft · P<sub>u</sub> = {num(focus.y)} kip · V
@@ -338,7 +338,7 @@ function Readout({
 
   const design = meta.kind === "design";
   return (
-    <p aria-live="polite" className="min-h-8 font-mono text-[11px] leading-4 text-muted-foreground">
+    <p aria-live="polite" className="min-h-8 font-mono text-xs2 leading-4 text-muted-foreground">
       {design ? "design" : "nominal"} — {design ? "φM" : "M"}
       <sub>n</sub> = {num(focus.x)} kip-ft · {design ? "φP" : "P"}
       <sub>n</sub> = {num(focus.y)} kip{meta.capped ? " (at the axial cap)" : ""}

@@ -72,9 +72,9 @@ export function notify({ title, description, duration, id, action }: NotifyOptio
     (toastId) => (
       <div className="flex w-(--width) max-w-full items-start gap-3 rounded-xl bg-card px-3 py-2.5 text-card-foreground ring-1 ring-foreground/10">
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="font-mono text-[13px] leading-snug">{title}</span>
+          <span className="font-mono text-sm2 leading-snug">{title}</span>
           {description === undefined ? null : (
-            <span className="font-mono text-[11px] leading-snug text-muted-foreground">
+            <span className="font-mono text-xs2 leading-snug text-muted-foreground">
               {description}
             </span>
           )}
@@ -83,7 +83,7 @@ export function notify({ title, description, duration, id, action }: NotifyOptio
           <Button
             size="xs"
             variant="outline"
-            className="shrink-0 font-mono text-[11px]"
+            className="shrink-0 font-mono text-xs2"
             onClick={() => {
               action.onClick();
               toast.dismiss(toastId);

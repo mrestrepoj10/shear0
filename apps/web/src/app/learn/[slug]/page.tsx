@@ -47,7 +47,7 @@ function DesignerLink({ item }: { item: LearnCase }) {
   return (
     <Link
       href={`/design?w=${encodeWallInput(item.input)}`}
-      className="inline-flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+      className="inline-flex items-center gap-1.5 font-mono text-xs2 text-muted-foreground underline underline-offset-2 hover:text-foreground"
     >
       open this example in the designer
       <span aria-hidden="true">→</span>
@@ -67,7 +67,7 @@ export default async function LearnTopicPage({ params }: PageProps<"/learn/[slug
     <article className="mx-auto max-w-5xl px-4 py-16">
       <Link
         href="/learn"
-        className="font-mono text-[11px] text-muted-foreground hover:text-foreground"
+        className="font-mono text-xs2 text-muted-foreground hover:text-foreground"
       >
         ← learn
       </Link>
@@ -100,12 +100,12 @@ export default async function LearnTopicPage({ params }: PageProps<"/learn/[slug
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border pb-2">
             <h2 className="font-mono text-xs tracking-tight text-foreground">{item.label}</h2>
             {item.demand === undefined ? null : (
-              <span className="font-mono text-[11px] text-muted-foreground">
+              <span className="font-mono text-xs2 text-muted-foreground">
                 {demandLine(item.demand)}
               </span>
             )}
           </div>
-          <p className="mt-2 max-w-prose text-[11px] leading-4 text-muted-foreground">
+          <p className="mt-2 max-w-prose text-xs2 leading-4 text-muted-foreground">
             {item.caption}
           </p>
 
@@ -128,14 +128,14 @@ export default async function LearnTopicPage({ params }: PageProps<"/learn/[slug
         <h2 className="border-b border-border pb-2 font-mono text-xs tracking-tight text-foreground">
           what to look for in the trace
         </h2>
-        <ul className="mt-3 flex max-w-prose list-disc flex-col gap-2 pl-5 font-sans text-[13px] leading-5 text-muted-foreground">
+        <ul className="mt-3 flex max-w-prose list-disc flex-col gap-2 pl-5 font-sans text-sm2 leading-5 text-muted-foreground">
           {topic.notes.map((note) => (
             <li key={note}>{note}</li>
           ))}
         </ul>
       </section>
 
-      <p className="mt-10 max-w-prose font-mono text-[11px] text-muted-foreground">
+      <p className="mt-10 max-w-prose font-mono text-xs2 text-muted-foreground">
         every step above is the engine&rsquo;s own output — kern does not restate the code in prose
         and then compute it separately. Output requires review by a licensed engineer and is not
         engineering advice.

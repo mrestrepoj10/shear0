@@ -34,7 +34,7 @@ export default function LearnPage() {
         <section key={group.id} className="mt-10">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border pb-2">
             <h2 className="font-mono text-xs tracking-tight text-foreground">{group.title}</h2>
-            <span className="font-mono text-[11px] text-muted-foreground">{group.blurb}</span>
+            <span className="font-mono text-xs2 text-muted-foreground">{group.blurb}</span>
           </div>
 
           <ul className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -58,7 +58,7 @@ export default function LearnPage() {
         </section>
       ))}
 
-      <p className="mt-10 max-w-prose font-mono text-[11px] text-muted-foreground">
+      <p className="mt-10 max-w-prose font-mono text-xs2 text-muted-foreground">
         the walls behind these pages are MNL-17(21) Shear Wall Examples 1 and 2 — the same fixtures
         the engine&rsquo;s test suite asserts against. Every walkthrough links its wall into{" "}
         <Link href="/design" className="underline underline-offset-2 hover:text-foreground">
