@@ -91,8 +91,12 @@ export const ShearSweep = memo(function ShearSweep({
     if (governing === null) return null;
     const special = input.system === "special";
     const check = special ? checkSpecialShear : checkInPlaneShear;
-    const Vu = governing.check.demand?.value;
-    if (typeof Vu !== "number" || !Number.isFinite(Vu)) return null;
+    // The check's demand node keeps the signed V_u for the trace; utilization
+    // compares |V_u|, and so does this chart — a negative shear input must not
+    // drop the demand rule below zero and declare every spacing adequate.
+    const VuRaw = governing.check.demand?.value;
+    if (typeof VuRaw !== "number" || !Number.isFinite(VuRaw)) return null;
+    const Vu = Math.abs(VuRaw);
 
     // The engine memoizes per WallInput object, so each swept spacing gets its
     // own input clone and the sweep never pollutes the live wall's caches.

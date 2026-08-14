@@ -256,8 +256,11 @@ export const InteractionChart = memo(function InteractionChart({
             // the strain-profile drawing redraws the section at that c. Demand
             // markers and empty space clear it back to the governing slice.
             const meta = next?.meta;
+            // The analytic pure-tension endpoint has c = 0 — there is no
+            // neutral axis to draw, so it clears the trace instead of
+            // publishing a slice the drawing would have to reject.
             setSelection(
-              meta !== undefined && meta.kind !== "demand"
+              meta !== undefined && meta.kind !== "demand" && meta.c > 0
                 ? { kind: "pm-slice", c: meta.c }
                 : null,
             );

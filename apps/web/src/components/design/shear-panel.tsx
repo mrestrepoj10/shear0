@@ -70,7 +70,9 @@ function build(report: WallReport): ShearView | null {
       id: group.demand.id,
       label: group.demand.label ?? group.demand.id,
       status: check.status,
-      Vu: check.demand?.value,
+      // The check's demand node keeps the signed V_u for the trace; the bar
+      // plots the magnitude the utilization actually compares.
+      Vu: check.demand === undefined ? undefined : Math.abs(check.demand.value),
       phiVn: check.capacity?.value,
       utilization: check.utilization?.value,
     });

@@ -151,8 +151,13 @@ export function BarChart<M = unknown>({
       }
     }
 
+    // Bands are keyed by the category *id*, never the label: labels are
+    // user-editable and need not be unique, and `scaleBand` deduplicates its
+    // domain — two load cases sharing a label would silently overlap in one
+    // band. The id keys the geometry; the tick formatter puts the label back.
+    const labelById = new Map(categories.map((category) => [category.id, category.label]));
     const categoryScale = scaleBand<string>()
-      .domain(categories.map((category) => category.label))
+      .domain(categories.map((category) => category.id))
       .paddingInner(0.25)
       .paddingOuter(0.1);
     const groupScale = scaleBand<string>().domain(seriesIds).paddingInner(0.12);
@@ -164,7 +169,7 @@ export function BarChart<M = unknown>({
       barX(rows, {
         id: "bars",
         x: "value",
-        y: "categoryLabel",
+        y: "categoryId",
         z: "barId",
         fill: (row: Row) => PALETTE[row.token],
         layout: group({ scale: groupScale }),
@@ -197,6 +202,9 @@ export function BarChart<M = unknown>({
       },
       y: {
         scale: categoryScale,
+        axis: {
+          ticks: { format: (value: string) => labelById.get(value) ?? value },
+        },
       },
       theme: { foreground: PALETTE.line, muted: PALETTE.muted, grid: PALETTE.grid },
     });
