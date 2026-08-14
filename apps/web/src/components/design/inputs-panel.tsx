@@ -761,12 +761,16 @@ function DemandCard({
           aria-label="load case name"
           name={`${demand.id}-name`}
           autoComplete="off"
+          spellCheck={false}
           value={demand.label ?? ""}
-          placeholder={demand.id}
+          placeholder="name this case"
           onChange={(event) =>
             dispatch({ type: "setDemand", id: demand.id, patch: { label: event.target.value } })
           }
-          className="h-6 min-w-0 flex-1 rounded-sm bg-transparent px-1 font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground focus-visible:bg-muted"
+          // Borderless at rest — it is a title, not a form field — but a title
+          // you can type in, so it takes the same hover and the same focus ring
+          // as every other input rather than the 1.03:1 tint it had.
+          className="h-6 min-w-0 flex-1 rounded-sm border border-transparent bg-transparent px-1 font-mono text-xs text-foreground transition-colors outline-none placeholder:text-muted-foreground hover:bg-muted/60 focus-visible:border-ring focus-visible:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
         />
         {removable ? (
           <Button
