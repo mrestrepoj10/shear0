@@ -9,7 +9,15 @@
  */
 
 import type { Spec } from "@json-render/core";
-import type { CheckResult, CheckStatus, WallInput, WallReport } from "@kern/engine";
+import {
+  barPositions,
+  designCurve,
+  interactionCurve,
+  type CheckResult,
+  type CheckStatus,
+  type WallInput,
+  type WallReport,
+} from "@kern/engine";
 import { demandTitle, flattenCheck, inputRows, valueText, type ReportMeta } from "./build-spec";
 
 /** LaTeX commands and Unicode math the engine uses, to WinAnsi-safe ASCII. */
@@ -27,7 +35,8 @@ const LATEX: [RegExp, string][] = [
   [/\\epsilon/g, "eps"],
   [/\\omega/g, "omega"],
   [/\\sqrt/g, "sqrt"],
-  [/\\frac/g, ""],
+  [/\\[dt]?frac/g, ""],
+  [/\\quad|\\qquad/g, " "],
   [/\\left|\\right/g, ""],
   [/\\cdot/g, " * "],
   [/\\times/g, " x "],
@@ -52,7 +61,21 @@ const UNICODE: [RegExp, string][] = [
   [/σ/g, "sigma"],
   [/ε/g, "eps"],
   [/ω/g, "omega"],
+  [/Ω/g, "Omega"],
+  [/μ/g, "mu"],
+  [/θ/g, "theta"],
+  [/γ/g, "gamma"],
+  [/τ/g, "tau"],
+  [/ν/g, "nu"],
+  [/χ/g, "chi"],
+  [/ψ/g, "psi"],
+  [/Ψ/g, "Psi"],
+  [/Φ/g, "Phi"],
+  [/Σ/g, "Sum"],
   [/π/g, "pi"],
+  [/²/g, "^2"],
+  [/³/g, "^3"],
+  [/±/g, "+/-"],
   [/√/g, "sqrt"],
   [/·/g, " * "],
   [/×/g, " x "],
@@ -60,7 +83,9 @@ const UNICODE: [RegExp, string][] = [
   [/≥/g, " >= "],
   [/≠/g, " != "],
   [/'/g, "'"],
-  [/—/g, "-"],
+  [/—|–/g, "-"],
+  [/’|‘/g, "'"],
+  [/“|”/g, '"'],
 ];
 
 export function asciiMath(s: string): string {
@@ -68,6 +93,10 @@ export function asciiMath(s: string): string {
   for (const [re, to] of LATEX) out = out.replace(re, to);
   for (const [re, to] of UNICODE) out = out.replace(re, to);
   out = out.replace(/[{}]/g, "").replace(/\\/g, "");
+  // Whatever survives the mappings must still be WinAnsi-encodable — the
+  // standard PDF fonts cover Latin-1 only, and one stray glyph fails the
+  // whole render. "?" over tofu, and over a 500.
+  out = out.replace(/[^\x20-\xFF]/g, "?");
   return out.replace(/\s+/g, " ").trim();
 }
 
@@ -152,6 +181,58 @@ export function buildPdfSpec(input: WallInput, report: WallReport, meta: ReportM
     }),
     add("Spacer", { height: 12 }),
   ];
+
+  // Figures: the wall itself, the P–M surface, and the utilization overview —
+  // drawn as vectors by the custom components in `pdf-registry.tsx` from the
+  // same engine data the on-screen charts plot.
+  children.push(
+    add("Heading", { text: "wall plan section", level: "h2" }),
+    add("WallPlan", {
+      lw: input.geometry.lw,
+      h: input.geometry.h,
+      stations: barPositions(input).map((st) => st.x),
+      sbeLength: input.sbe?.length ?? null,
+    }),
+    add("Heading", { text: "P-M interaction (ACI 318-19 Sec. 22.2 / 22.4)", level: "h2" }),
+    add("PmChart", {
+      design: designCurve(input, { points: 120 }).map((p) => ({ x: p.phiMn, y: p.phiPn })),
+      nominal: interactionCurve(input, { points: 120 }).map((p) => ({ x: p.Mn, y: p.Pn })),
+      demands: input.demands.map((d) => {
+        const check = report.perDemand
+          .find((g) => g.demand.id === d.id)
+          ?.checks.find((c) => c.id === "flexure.axial");
+        return {
+          x: Math.abs(d.Mu),
+          y: d.Pu,
+          label: d.label ?? d.id,
+          ok: check?.status !== "ng",
+        };
+      }),
+    }),
+    add("Spacer", { height: 8 }),
+  );
+
+  const utilizationRows = [
+    ...report.general.map((check) => ({ check, scope: "" })),
+    ...report.perDemand.flatMap((group) =>
+      group.checks.map((check) => ({
+        check,
+        scope: ` (${group.demand.label ?? group.demand.id})`,
+      })),
+    ),
+  ]
+    .filter(({ check }) => typeof check.utilization?.value === "number")
+    .map(({ check, scope }) => ({
+      label: asciiMath(`${check.title}${scope}`),
+      value: check.utilization!.value as number,
+      status: check.status,
+    }));
+  if (utilizationRows.length > 0) {
+    children.push(
+      add("Heading", { text: "utilization overview", level: "h2" }),
+      add("UtilizationChart", { rows: utilizationRows }),
+    );
+  }
 
   if (report.general.length > 0) {
     children.push(add("Heading", { text: "geometry & detailing", level: "h2" }));

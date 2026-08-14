@@ -10,6 +10,7 @@ import { renderToBuffer } from "@json-render/react-pdf";
 import { checkOrdinaryWall, checkSpecialWall, type WallInput } from "@kern/engine";
 import type { NextRequest } from "next/server";
 import { EXAMPLE_1 } from "@/lib/presets";
+import { registry } from "@/lib/report/pdf-registry";
 import { buildPdfSpec } from "@/lib/report/pdf-spec";
 import { WALL_PARAM, decodeWallInput, encodeWallInput } from "@/lib/wall-codec";
 
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
       link: `${request.nextUrl.origin}/design?w=${encoded}`,
       generatedAt: new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC",
     });
-    buffer = await renderToBuffer(spec);
+    buffer = await renderToBuffer(spec, { registry });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return Response.json({ error: `could not build the report: ${message}` }, { status: 422 });
