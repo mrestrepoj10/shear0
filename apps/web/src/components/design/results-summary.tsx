@@ -92,18 +92,39 @@ const VERDICT_TEXT: Record<CheckStatus, string> = {
   na: "nothing to check",
 };
 
+/**
+ * A wall carrying no load at all: every check that needs a demand passes on
+ * zero, and the strip used to call that "ok — all checks pass". It is not a
+ * passing design, it is an unasked question, so it reads as n/a and says what
+ * to do. The rows below stay exactly as the engine computed them.
+ */
+function hasNoLoads(report: WallReport): boolean {
+  return report.perDemand.every(
+    ({ demand }) =>
+      demand.Pu === 0 &&
+      demand.Mu === 0 &&
+      demand.Vu === 0 &&
+      (demand.MuOut ?? 0) === 0 &&
+      (demand.VuOut ?? 0) === 0,
+  );
+}
+
 export function VerdictStrip({ report }: { report: WallReport }) {
   const governing = governingCheck(report);
   const total =
     report.general.length + report.perDemand.reduce((n, group) => n + group.checks.length, 0);
+  // A real failure always wins the strip: an ng that does not depend on the
+  // demands (detailing, ρ_min) is still an ng, loads or no loads.
+  const unloaded = report.status !== "ng" && hasNoLoads(report);
+  const status = unloaded ? "na" : report.status;
 
   return (
     <div className="sticky top-12 z-30 -mx-4 border-b border-border bg-background/85 px-4 py-2.5 backdrop-blur">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <div className="flex items-center gap-2">
-          <StatusBadge status={report.status} className="h-6 px-2 text-xs" />
-          <span className={cn("text-sm", statusText(report.status))}>
-            {VERDICT_TEXT[report.status]}
+          <StatusBadge status={status} className="h-6 px-2 text-xs" />
+          <span className={cn("text-sm", statusText(status))}>
+            {unloaded ? "no loads applied — enter a load case" : VERDICT_TEXT[report.status]}
           </span>
           <span className="text-xs text-muted-foreground">
             {total} check{total === 1 ? "" : "s"}

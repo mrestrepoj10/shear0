@@ -75,7 +75,10 @@ export const BLANK: WallInput = {
   grade: GRADE60,
   vertical: { bar: "5", spacing: 12, curtains: 2 },
   horizontal: { bar: "5", spacing: 12, curtains: 2 },
-  demands: [{ id: "load-1", label: "load-1", Pu: 0, Mu: 0, Vu: 0 }],
+  // Unlabelled on purpose: `load-1` is an internal id, and shipping it as the
+  // case's name printed a slug where a name belongs. Nameless, the input shows
+  // its placeholder and the results head the block with the id only.
+  demands: [{ id: "load-1", Pu: 0, Mu: 0, Vu: 0 }],
   wallType: "bearing",
   system: "ordinary",
 };

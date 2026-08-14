@@ -195,9 +195,11 @@ export function wallReducer(state: WallInput, action: WallAction): WallInput {
     case "addDemand": {
       const id = nextDemandId(state.demands);
       const last = state.demands[state.demands.length - 1];
+      // No `label`: the id is bookkeeping, not a name a user would write, and
+      // labelling the case `load-2` puts that slug on screen as if it meant
+      // something. Unnamed, the field shows its placeholder until it is named.
       const created: Demands = {
         id,
-        label: id,
         Pu: last?.Pu ?? 0,
         Mu: last?.Mu ?? 0,
         Vu: last?.Vu ?? 0,
