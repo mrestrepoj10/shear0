@@ -78,13 +78,21 @@ function Workspace({ linkFailed }: { linkFailed: boolean }) {
             "give me the document" is its own errand, and burying the only way
             to reach it one page deep hid the export entirely. */}
         <span className="flex items-center gap-3">
-          <a
-            href={`/api/report/pdf?${WALL_PARAM}=${encodeWallInput(input)}`}
-            download="kern-calc-sheet.pdf"
-            className="font-mono text-xs2 text-muted-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
-          >
-            pdf
-          </a>
+          {/* Only offered when there is a report to render. `download` saves
+              whatever the server sends regardless of status, so on a wall the
+              engine cannot evaluate this link would hand the user the route's
+              422 JSON body saved as `kern-calc-sheet.pdf` — a file that opens
+              in nothing. The calc sheet link stays: that route degrades to an
+              explanation of what is wrong with the inputs. */}
+          {report === null ? null : (
+            <a
+              href={`/api/report/pdf?${WALL_PARAM}=${encodeWallInput(input)}`}
+              download="kern-calc-sheet.pdf"
+              className="font-mono text-xs2 text-muted-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              pdf
+            </a>
+          )}
           <a
             href={`/design/report?${WALL_PARAM}=${encodeWallInput(input)}`}
             className="font-mono text-xs2 text-muted-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"

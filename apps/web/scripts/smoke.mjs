@@ -30,6 +30,16 @@ const BOOT_TIMEOUT_MS = 60_000;
 const WALL =
   "eyJ2IjoyLCJnIjpbMzM2LDEyLDExMDQsMjAyLDAuOCwxLjVdLCJtIjpbNTAwMCwxLDYwXSwidnIiOlsiNSIsMTIsMl0sImh6IjpbIjUiLDEyLDJdLCJleiI6bnVsbCwiZCI6W1sibG9hZC0xIiwiYmFzZSIsMTAxNSwxODYwMCwyMzUsbnVsbCxudWxsXV0sInd0IjoiYiIsInN5IjoibyIsInNtIjpudWxsLCJzYiI6bnVsbCwicHIiOm51bGx9";
 
+/**
+ * The same wall with vertical bars at 200 in on a 336 in wall: a payload the
+ * codec accepts and the engine cannot evaluate (no bar stations). The document
+ * route must degrade to an explanation rather than 500, and the PDF route must
+ * refuse rather than emit a file — the workspace hides its PDF link in this
+ * state, but a shared link can still reach the route directly.
+ */
+const UNEVALUABLE =
+  "eyJ2IjoyLCJnIjpbMzM2LDEyLDExMDQsMjAyLDAuOCwxLjVdLCJtIjpbNTAwMCwxLDYwXSwidnIiOlsiNSIsMjAwLDJdLCJoeiI6WyI1IiwxMiwyXSwiZXoiOm51bGwsImQiOltbImxvYWQtMSIsImJhc2UiLDEwMTUsMTg2MDAsMjM1LG51bGwsbnVsbF1dLCJ3dCI6ImIiLCJzeSI6Im8iLCJzbSI6bnVsbCwic2IiOm51bGwsInByIjpudWxsfQ";
+
 const ROUTES = [
   { path: "/", label: "landing" },
   { path: "/learn", label: "learn index" },
@@ -42,6 +52,16 @@ const ROUTES = [
   },
   { path: "/api/report/pdf", label: "pdf export", pdf: true },
   { path: `/api/report/pdf?w=${WALL}`, label: "pdf export (shared link)", pdf: true },
+  {
+    path: `/design/report?w=${UNEVALUABLE}`,
+    label: "calc sheet (unevaluable wall degrades)",
+    expect: "the engine could not run",
+  },
+  {
+    path: `/api/report/pdf?w=${UNEVALUABLE}`,
+    label: "pdf export refuses an unevaluable wall",
+    status: 422,
+  },
 ];
 
 const failures = [];
@@ -57,8 +77,20 @@ async function assertOk(route) {
 
   // Status is the assertion that matters: a 500 still returns a body, and that
   // body can contain the very strings a content check looks for.
-  if (response.status !== 200) {
-    failures.push(`${route.label} — HTTP ${response.status} (${route.path})`);
+  const wanted = route.status ?? 200;
+  if (response.status !== wanted) {
+    failures.push(`${route.label} — HTTP ${response.status}, expected ${wanted} (${route.path})`);
+    return;
+  }
+  // A deliberate refusal must not masquerade as a document: the workspace hides
+  // the link, but `download` would save whatever a direct hit returns.
+  if (wanted !== 200) {
+    const type = response.headers.get("content-type") ?? "";
+    if (type.includes("application/pdf")) {
+      failures.push(`${route.label} — refused with ${wanted} but sent a PDF content-type`);
+    } else {
+      console.log(`  ok  ${route.label} — ${wanted}, ${type.split(";")[0]}`);
+    }
     return;
   }
 
