@@ -9,10 +9,18 @@
  * the toolbar is `print:hidden`, sections avoid page breaks inside a check —
  * so "Export PDF" is `window.print()` for the browser route and a link to
  * `/api/report/pdf` for the rendered document.
+ *
+ * `<Renderer>` must sit inside `<JSONUIProvider>`: every element the renderer
+ * walks is checked for a `visible` condition, and that lookup calls
+ * `useVisibility()`, which throws outside the provider. Our specs carry no
+ * conditions and no state, but the check runs regardless — so the provider is
+ * mandatory, not optional, and rendering without it threw
+ * "useVisibility must be used within a VisibilityProvider" on the server and
+ * turned the whole route into a 500.
  */
 
 import type { Spec } from "@json-render/core";
-import { defineRegistry, Renderer } from "@json-render/react";
+import { JSONUIProvider, defineRegistry, Renderer } from "@json-render/react";
 import type { CheckStatus } from "@kern/engine";
 import { StatusBadge, UtilizationBar, num } from "@/components/design/status";
 import { Tex } from "@/components/design/tex";
@@ -150,7 +158,9 @@ export function ReportView({ spec, encoded }: { spec: Spec; encoded: string }) {
         </Button>
       </div>
 
-      <Renderer spec={spec} registry={registry} />
+      <JSONUIProvider registry={registry}>
+        <Renderer spec={spec} registry={registry} />
+      </JSONUIProvider>
     </div>
   );
 }

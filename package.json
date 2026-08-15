@@ -8,7 +8,8 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
-    "test": "turbo test"
+    "test": "turbo test",
+    "smoke": "turbo smoke"
   },
   "devDependencies": {
     "turbo": "^2.5.0",

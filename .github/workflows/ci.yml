@@ -44,3 +44,11 @@ jobs:
       - run: pnpm build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
+
+      # A green build says the app compiles, not that it serves: the calc sheet
+      # shipped 500ing on every render behind a passing build. This boots the
+      # built app and asserts each route answers 200 (and that the PDF route
+      # really returns a PDF).
+      - run: pnpm smoke
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
