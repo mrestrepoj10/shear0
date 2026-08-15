@@ -72,15 +72,34 @@ function Workspace({ linkFailed }: { linkFailed: boolean }) {
           inputs and the drawings start on the same line. */}
       <div className="flex flex-wrap items-center justify-between gap-2 pt-5">
         <WallToolbar />
-        {/* The calc sheet is the same save file on a document route — the link
-            carries the wall, so it opens (and prints, and PDFs) exactly what is
-            on screen right now. */}
-        <a
-          href={`/design/report?${WALL_PARAM}=${encodeWallInput(input)}`}
-          className="font-mono text-xs2 text-muted-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
-        >
-          calc sheet →
-        </a>
+        {/* The calc sheet is the same save file on a document route — both
+            links carry the wall, so they open exactly what is on screen right
+            now. The PDF is linked from here as well as from the calc sheet:
+            "give me the document" is its own errand, and burying the only way
+            to reach it one page deep hid the export entirely. */}
+        <span className="flex items-center gap-3">
+          {/* Only offered when there is a report to render. `download` saves
+              whatever the server sends regardless of status, so on a wall the
+              engine cannot evaluate this link would hand the user the route's
+              422 JSON body saved as `kern-calc-sheet.pdf` — a file that opens
+              in nothing. The calc sheet link stays: that route degrades to an
+              explanation of what is wrong with the inputs. */}
+          {report === null ? null : (
+            <a
+              href={`/api/report/pdf?${WALL_PARAM}=${encodeWallInput(input)}`}
+              download="kern-calc-sheet.pdf"
+              className="font-mono text-xs2 text-muted-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              pdf
+            </a>
+          )}
+          <a
+            href={`/design/report?${WALL_PARAM}=${encodeWallInput(input)}`}
+            className="font-mono text-xs2 text-muted-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            calc sheet →
+          </a>
+        </span>
       </div>
 
       <div className="grid grid-cols-1 gap-6 pt-3 lg:grid-cols-[380px_minmax(0,1fr)]">

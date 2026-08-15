@@ -8,6 +8,7 @@
     "dev": { "cache": false, "persistent": true },
     "lint": {},
     "typecheck": { "dependsOn": [] },
-    "test": { "dependsOn": [] }
+    "test": { "dependsOn": [] },
+    "smoke": { "dependsOn": ["build"], "cache": false }
   }
 }
