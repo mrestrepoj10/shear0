@@ -1,8 +1,9 @@
 import { beta1, fcInput } from "../materials";
 import { aci, derive, input } from "../trace";
 import type { Traced } from "../trace";
-import { fmtTex, kipInToKipFt, ksiToPsi } from "../units";
-import { Ag, barPositions } from "../wall";
+import { fmtTex, kipInToKipFt, ksiToMPa, ksiToPsi, mmToIn } from "../units";
+import type { UnitScheme } from "../units";
+import { Ag, barPositions, schemeOf } from "../wall";
 import type { WallInput } from "../wall";
 
 /**
@@ -53,6 +54,28 @@ import type { WallInput } from "../wall";
  * The numeric core is plain number math over pre-resolved typed arrays — no
  * Traced allocation inside any loop. Only the handful of reported section
  * properties below (`section.*`) are wrapped as trace nodes.
+ *
+ * ## Two-edition seam (`WallInput.units`)
+ * Unlike a Code formula site, this solver has **no edition-specific
+ * coefficient**: strain compatibility, the 0.85 f'c block, ε_cu = 0.003, the
+ * Table 21.2.2 φ ramp and the 0.80 P_o cap are printed identically in ACI 318-19
+ * and ACI 318M-19. The one place the editions differ is β1, whose breakpoints
+ * are nonhomogeneous (4000/8000 psi against 28/55 MPa), so `buildSection` passes
+ * the wall's scheme to `beta1`.
+ *
+ * Everything else stays in the canonical kip/in/ksi system: the iteration, the
+ * root finding, and every intermediate. Converting the internals would buy
+ * nothing and would perturb the handbook oracles. Instead the conversion happens
+ * once, at the **reporting boundary** — the exported curve/slice/limit functions
+ * and the `section.*` trace nodes convert their canonical results into the
+ * wall's reporting system (mm, kN, kN·m) on the way out.
+ *
+ * Argument convention at that boundary: an axial force argument (`Pu`) is a
+ * *demand* read straight out of `Demands`, so it stays canonical **kip** in both
+ * modes. A neutral axis depth argument (`sectionAt`'s `c`) is a value this
+ * module itself produced, so it is symmetric with what `cAt`/`designSliceAt`
+ * return — i.e. mm in SI mode — and `sectionAt(w, cAt(w, Pu))` composes
+ * correctly in either edition.
  */
 
 /** Maximum usable concrete compressive strain, 22.2.2.1. */
@@ -70,13 +93,16 @@ const PN_MAX_FACTOR = 0.8;
 /** Probable-strength steel overstrength factor, 18.10.5 / R18.10.3.1. */
 const MPR_FY_FACTOR = 1.25;
 
-/** A single point on the nominal (unfactored) interaction surface. */
+/**
+ * A single point on the nominal (unfactored) interaction surface, in the wall's
+ * reporting system — in/kip/kip-ft by default, mm/kN/kN·m when `units: "si"`.
+ */
 export interface SectionPoint {
-  /** neutral axis depth measured from the extreme compression fiber (x = 0), in */
+  /** neutral axis depth measured from the extreme compression fiber (x = 0), in | mm */
   c: number;
-  /** nominal axial strength, kip — compression positive */
+  /** nominal axial strength, kip | kN — compression positive */
   Pn: number;
-  /** nominal flexural strength about ℓ_w/2, kip-ft */
+  /** nominal flexural strength about ℓ_w/2, kip-ft | kN·m */
   Mn: number;
   /** net tensile strain in the extreme tension bar, tension positive */
   epsT: number;
@@ -84,13 +110,16 @@ export interface SectionPoint {
   phi: number;
 }
 
-/** A single point on the design (φ-factored, axially capped) interaction surface. */
+/**
+ * A single point on the design (φ-factored, axially capped) interaction surface,
+ * in the wall's reporting system (in/kip/kip-ft | mm/kN/kN·m).
+ */
 export interface DesignPoint {
-  /** neutral axis depth, in */
+  /** neutral axis depth, in | mm */
   c: number;
-  /** design axial strength φPn, kip — capped at φ·0.80·Po (22.4.2.1) */
+  /** design axial strength φPn, kip | kN — capped at φ·0.80·Po (22.4.2.1) */
   phiPn: number;
-  /** design flexural strength φMn, kip-ft */
+  /** design flexural strength φMn, kip-ft | kN·m */
   phiMn: number;
   /** net tensile strain in the extreme tension bar, tension positive */
   epsT: number;
@@ -105,7 +134,7 @@ export interface CurveOptions {
   points?: number;
 }
 
-/** Analytic axial endpoints of the interaction surface, kip. */
+/** Analytic axial endpoints of the interaction surface, kip | kN. */
 export interface AxialLimits {
   /** Eq. (22.4.2.2) nominal axial strength at zero eccentricity */
   Po: number;
@@ -163,7 +192,11 @@ function buildSection(w: WallInput, fyFactor: number): FiberSection {
   }
   const { lw, h } = w.geometry;
   const fy = w.grade.fy * fyFactor;
-  const b1 = beta1(w.concrete).value;
+  // β1 is the one edition-dependent quantity in the section model: ACI 318-19
+  // Table 22.2.2.4.3 breaks at 4000/8000 psi, ACI 318M-19 Table 22.2.2.4.3 at
+  // 28/55 MPa with the 0.05(f'c − 28)/7 slope. Forward the wall's scheme so the
+  // metric breakpoints govern in SI mode.
+  const b1 = beta1(w.concrete, schemeOf(w)).value;
   const xt = xs[n - 1]!;
 
   // Pn(c) stops growing once (a) the stress block covers the section and (b)
@@ -215,6 +248,28 @@ function probable(w: WallInput): FiberSection {
   return m;
 }
 
+// ---------------------------------------------------------------------------
+// reporting boundary — canonical (kip/in/kip-ft) → the wall's system
+// ---------------------------------------------------------------------------
+//
+// ε_t and φ are dimensionless and pass through untouched; c, Pn/φPn and
+// Mn/φMn are the reported quantities that change system.
+
+function reportPoint(U: UnitScheme, p: SectionPoint): SectionPoint {
+  if (!U.si) return p;
+  return { c: U.len(p.c), Pn: U.frc(p.Pn), Mn: U.mom(p.Mn), epsT: p.epsT, phi: p.phi };
+}
+
+function reportDesignPoint(U: UnitScheme, p: DesignPoint): DesignPoint {
+  if (!U.si) return p;
+  return { ...p, c: U.len(p.c), phiPn: U.frc(p.phiPn), phiMn: U.mom(p.phiMn) };
+}
+
+function reportLimits(U: UnitScheme, l: AxialLimits): AxialLimits {
+  if (!U.si) return l;
+  return { Po: U.frc(l.Po), PnMax: U.frc(l.PnMax), PntMax: U.frc(l.PntMax) };
+}
+
 /** Table 21.2.2, "other" column. ε_t tension positive. */
 function phiOf(epsT: number, ety: number): number {
   if (epsT <= ety) return PHI_COMPRESSION;
@@ -253,13 +308,16 @@ function pointAt(S: FiberSection, c: number): SectionPoint {
 /**
  * Nominal section strength at a given neutral axis depth.
  *
- * @param c neutral axis depth from the extreme compression fiber, in — must be > 0
- *          (c = 0 is the degenerate pure-tension limit, supplied analytically by
- *          `interactionCurve`).
+ * @param c neutral axis depth from the extreme compression fiber, in the wall's
+ *          reporting length unit (in | mm) — must be > 0 (c = 0 is the
+ *          degenerate pure-tension limit, supplied analytically by
+ *          `interactionCurve`). Symmetric with the `c` this module returns, so
+ *          `sectionAt(w, cAt(w, Pu))` composes in either edition.
  */
 export function sectionAt(w: WallInput, c: number): SectionPoint {
   if (!(c > 0)) throw new Error(`sectionAt: neutral axis depth must be positive, got c = ${c}`);
-  return pointAt(nominal(w), c);
+  const U = schemeOf(w);
+  return reportPoint(U, pointAt(nominal(w), U.si ? mmToIn(c) : c));
 }
 
 // ---------------------------------------------------------------------------
@@ -271,9 +329,13 @@ function limits(S: FiberSection): AxialLimits {
   return { Po, PnMax: PN_MAX_FACTOR * Po, PntMax: -S.fy * S.Ast };
 }
 
-/** Analytic axial endpoints, 22.4.2.2 / 22.4.2.1 / 22.4.3.1. */
+/**
+ * Analytic axial endpoints, 22.4.2.2 / 22.4.2.1 / 22.4.3.1 — the expressions are
+ * identical in ACI 318-19 and ACI 318M-19, so only the reported unit changes
+ * (kip | kN).
+ */
 export function axialLimits(w: WallInput): AxialLimits {
-  return limits(nominal(w));
+  return reportLimits(schemeOf(w), limits(nominal(w)));
 }
 
 /** The pure-tension endpoint: c = 0, all steel yielded, no concrete. */
@@ -299,10 +361,17 @@ function tensionEnd(S: FiberSection): SectionPoint {
  * nearly straight compression branch.
  */
 export function interactionCurve(w: WallInput, opts: CurveOptions = {}): SectionPoint[] {
-  const S = nominal(w);
+  const U = schemeOf(w);
+  return canonicalCurve(nominal(w), opts).map((p) => reportPoint(U, p));
+}
+
+/** The sweep itself, always in the canonical kip/in/kip-ft system. */
+function canonicalCurve(S: FiberSection, opts: CurveOptions): SectionPoint[] {
   const n = Math.max(3, Math.trunc(opts.points ?? 200));
   const out: SectionPoint[] = new Array(n);
   out[0] = tensionEnd(S);
+  // Solver tolerance, not a unit conversion: the smallest c the sweep starts
+  // from, a thousandth of the wall length. Unchanged in SI mode.
   const cMin = S.lw / 1000;
   const ratio = S.cFull / cMin;
   const last = n - 2;
@@ -320,18 +389,22 @@ export function interactionCurve(w: WallInput, opts: CurveOptions = {}): Section
  */
 export function designCurve(w: WallInput, opts: CurveOptions = {}): DesignPoint[] {
   const S = nominal(w);
+  const U = schemeOf(w);
   const cap = PHI_COMPRESSION * limits(S).PnMax;
-  return interactionCurve(w, opts).map((p) => {
+  // The cap comparison is done canonically, then the whole point is moved into
+  // the reporting system, so the cutoff lands at exactly the same physical load
+  // in both editions.
+  return canonicalCurve(S, opts).map((p) => {
     const phiPn = p.phi * p.Pn;
     const capped = phiPn > cap;
-    return {
+    return reportDesignPoint(U, {
       c: p.c,
       phiPn: capped ? cap : phiPn,
       phiMn: p.phi * p.Mn,
       epsT: p.epsT,
       phi: p.phi,
       capped,
-    };
+    });
   });
 }
 
@@ -390,18 +463,20 @@ const designPn = (p: SectionPoint): number => p.phi * p.Pn;
  * for the factored axial force and nominal moment strength"), hence the largest
  * root is returned when the small stress-block steps produce more than one.
  *
- * @param Pu factored axial force, kip, compression positive
+ * @param Pu factored axial force, **canonical kip**, compression positive
+ * @returns c in the wall's reporting length unit (in | mm)
  */
 export function cAt(w: WallInput, Pu: number): number {
   const S = nominal(w);
+  const U = schemeOf(w);
   const roots = rootsOf(S, Pu, nominalPn);
   if (roots.length === 0) {
-    const lim = limits(S);
+    const lim = reportLimits(U, limits(S));
     throw new Error(
-      `cAt: Pu = ${Pu} kip is outside the nominal axial range [${lim.PntMax.toFixed(1)}, ${lim.Po.toFixed(1)}] kip`,
+      `cAt: Pu = ${U.frc(Pu)} ${U.force} is outside the nominal axial range [${lim.PntMax.toFixed(1)}, ${lim.Po.toFixed(1)}] ${U.force}`,
     );
   }
-  return Math.max(...roots);
+  return U.len(Math.max(...roots));
 }
 
 /**
@@ -413,21 +488,22 @@ export function cAt(w: WallInput, Pu: number): number {
  * steel simply yields at a 25 % higher strain. Equilibrium is re-solved on the
  * overstrength section, so c(M_pr) ≠ c(M_n) at the same Pu.
  *
- * @param Pu factored axial force, kip, compression positive
- * @returns M_pr, kip-ft
+ * @param Pu factored axial force, **canonical kip**, compression positive
+ * @returns M_pr in the wall's reporting moment unit (kip-ft | kN·m)
  */
 export function mprAt(w: WallInput, Pu: number): number {
   const S = probable(w);
+  const U = schemeOf(w);
   const roots = rootsOf(S, Pu, nominalPn);
   if (roots.length === 0) {
-    const lim = limits(S);
+    const lim = reportLimits(U, limits(S));
     throw new Error(
-      `mprAt: Pu = ${Pu} kip is outside the probable-strength axial range [${lim.PntMax.toFixed(1)}, ${lim.Po.toFixed(1)}] kip`,
+      `mprAt: Pu = ${U.frc(Pu)} ${U.force} is outside the probable-strength axial range [${lim.PntMax.toFixed(1)}, ${lim.Po.toFixed(1)}] ${U.force}`,
     );
   }
   let best = Number.NEGATIVE_INFINITY;
   for (const c of roots) best = Math.max(best, pointAt(S, c).Mn);
-  return best;
+  return U.mom(best);
 }
 
 /**
@@ -444,8 +520,9 @@ export function mprAt(w: WallInput, Pu: number): number {
  * The 22.4.2.1 axial cap is deliberately **not** applied here: it is a separate
  * limit state, reported as its own sub-check by `checkFlexureAxial`.
  *
- * @param Pu factored axial force, kip, compression positive
- * @returns φMn, kip-ft; 0 when Pu lies outside the design axial range
+ * @param Pu factored axial force, **canonical kip**, compression positive
+ * @returns φMn in the wall's reporting moment unit (kip-ft | kN·m); 0 when Pu
+ *          lies outside the design axial range
  */
 export function phiMnAt(w: WallInput, Pu: number): number {
   const S = nominal(w);
@@ -456,22 +533,34 @@ export function phiMnAt(w: WallInput, Pu: number): number {
     const p = pointAt(S, c);
     best = Math.max(best, p.phi * p.Mn);
   }
-  return best;
+  return schemeOf(w).mom(best);
 }
 
-/** The design point (c, ε_t, φ, φMn) that `phiMnAt` reports. */
+/**
+ * The design point (c, ε_t, φ, φMn) that `phiMnAt` reports, in the wall's
+ * reporting system (in/kip/kip-ft | mm/kN/kN·m).
+ */
 export interface DesignSlice {
+  /** neutral axis depth, in | mm */
   c: number;
+  /** nominal axial strength at the slice, kip | kN */
   Pn: number;
+  /** nominal flexural strength at the slice, kip-ft | kN·m */
   Mn: number;
   epsT: number;
   phi: number;
+  /** design flexural strength, kip-ft | kN·m */
   phiMn: number;
 }
 
-/** As `phiMnAt`, but returning the whole governing point for tracing. */
+/**
+ * As `phiMnAt`, but returning the whole governing point for tracing.
+ *
+ * @param Pu factored axial force, **canonical kip**, compression positive
+ */
 export function designSliceAt(w: WallInput, Pu: number): DesignSlice | undefined {
   const S = nominal(w);
+  const U = schemeOf(w);
   const roots = rootsOf(S, Pu, designPn);
   let best: DesignSlice | undefined;
   for (const c of roots) {
@@ -481,7 +570,15 @@ export function designSliceAt(w: WallInput, Pu: number): DesignSlice | undefined
       best = { c: p.c, Pn: p.Pn, Mn: p.Mn, epsT: p.epsT, phi: p.phi, phiMn };
     }
   }
-  return best;
+  if (best === undefined) return undefined;
+  return {
+    c: U.len(best.c),
+    Pn: U.frc(best.Pn),
+    Mn: U.mom(best.Mn),
+    epsT: best.epsT,
+    phi: best.phi,
+    phiMn: U.mom(best.phiMn),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -511,22 +608,37 @@ function memo(w: WallInput, id: string, make: () => Traced): Traced {
 export function AstInput(w: WallInput): Traced {
   return memo(w, "section.Ast", () => {
     const S = nominal(w);
+    const U = schemeOf(w);
     return input(
       "section.Ast",
       "A_st",
       "total area of vertical reinforcement",
-      S.Ast,
-      "in2",
+      U.ar(S.Ast),
+      U.area,
       `${S.n} bar stations along ℓ_w from the resolved layout`,
     );
   });
 }
 
-/** Specified yield strength of the vertical reinforcement. */
+/**
+ * Specified yield strength of the vertical reinforcement.
+ *
+ * Traced in ksi in the in-lb edition — the unit the P–M equilibrium below is
+ * assembled in and the unit ACI 318-19 Chapter 20 tabulates grades in — and in
+ * MPa in SI, where ACI 318M-19 20.2.2.4 names the grades by their MPa value
+ * (Grade 420, Grade 550).
+ */
 export function fyInput(w: WallInput): Traced {
-  return memo(w, "section.fy", () =>
-    input("section.fy", "f_y", "specified yield strength of reinforcement", w.grade.fy, "ksi"),
-  );
+  return memo(w, "section.fy", () => {
+    const U = schemeOf(w);
+    return input(
+      "section.fy",
+      "f_y",
+      "specified yield strength of reinforcement",
+      U.si ? ksiToMPa(w.grade.fy) : w.grade.fy,
+      U.si ? "MPa" : "ksi",
+    );
+  });
 }
 
 /** ε_ty per 21.2.2.1 — the φ threshold, not the material yield strain f_y/E_s. */
@@ -538,83 +650,142 @@ export function etyInput(w: WallInput): Traced {
       "yield strain of reinforcement",
       w.grade.ety,
       "1",
-      w.grade.ety === 0.002 ? "0.002 permitted for Grade 60, 21.2.2.1" : "ε_ty = f_y/E_s, 21.2.2.1",
+      // 21.2.2.1 is dimensionless and identical in both editions; only the
+      // grade it names differs (Grade 60 / Grade 420).
+      w.grade.ety === 0.002
+        ? "0.002 permitted for Grade 60, 21.2.2.1"
+        : w.grade.ety === 0.0021 && schemeOf(w).si
+          ? "0.0021 permitted for Grade 420, ACI 318M-19 21.2.2.1"
+          : "ε_ty = f_y/E_s, 21.2.2.1",
     ),
   );
 }
 
-/** Station of the extreme tension bar, in — the fiber ε_t is measured there. */
+/** Station of the extreme tension bar (in | mm) — the fiber ε_t is measured there. */
 export function xtInput(w: WallInput): Traced {
-  return memo(w, "section.x_t", () =>
-    input(
+  return memo(w, "section.x_t", () => {
+    const U = schemeOf(w);
+    return input(
       "section.x_t",
       "x_t",
       "station of the extreme tension reinforcement",
-      nominal(w).xt,
-      "in",
+      U.len(nominal(w).xt),
+      U.length,
       "measured from the extreme compression fiber at x = 0",
-    ),
-  );
+    );
+  });
 }
 
 /**
- * f'c in ksi. `materials.fcInput` traces f'c in psi because every ACI in-lb
- * strength expression is written in psi; the P–M equilibrium is assembled in
- * kip/in/ksi, so the conversion gets its own node rather than happening silently.
+ * The f'c leaf the P–M nodes hang off — the seam between the stress unit the
+ * Code is *written* in and the stress unit the equilibrium is *assembled* in.
+ *
+ * `materials.fcInput` traces f'c in the unit of the edition in force, because
+ * that is what every strength expression consuming it is printed in: psi in
+ * ACI 318-19, MPa in ACI 318M-19.
+ *
+ * **in-lb** — the fiber solver is assembled in kip/in/ksi, so there is a real
+ * psi → ksi step between the leaf and the equilibrium. It gets its own node
+ * rather than happening silently: `f'_c = f'_{c,psi}/1000`.
+ *
+ * **SI** — there is no such step to narrate. The solver is *still* assembled in
+ * the canonical ksi (see the module header — nothing in it is edition-specific
+ * beyond β1), but that is a private implementation detail, not Code content:
+ * ACI 318M-19 writes f'c in MPa and every reported value on this path is in MPa,
+ * mm and kN. Emitting a ksi node here would put an in-lb unit tag in the middle
+ * of a metric graph and would invite a reader to treat the ksi number as
+ * something the metric Code says. So in SI the MPa leaf *is* the node, and the
+ * ksi the solver runs on never surfaces in the trace. This is why the function
+ * is no longer named for the unit it returns.
  */
 export function fcKsi(w: WallInput): Traced {
+  const U = schemeOf(w);
+  if (U.si) return fcInput(w.concrete, U);
   return memo(w, "section.fc_ksi", () => {
-    const fc = fcInput(w.concrete);
+    const fc = fcInput(w.concrete, U);
     return derive({
       id: "section.fc_ksi",
       symbol: "f'_c",
       label: "specified concrete compressive strength",
       value: w.concrete.fc,
       unit: "ksi",
-      formula: "f'_c = f'_{c,\\text{psi}}/1000",
-      substitution: `f'_c = ${fmtTex(ksiToPsi(w.concrete.fc))}/1000 = ${fmtTex(w.concrete.fc, { dp: 2 })}\\ \\text{ksi}`,
+      // The fiber solver assembles P–M equilibrium in the canonical kip/in/ksi
+      // system in both editions, so this node is the declared seam between the
+      // stress unit the Code prints (psi | MPa) and the unit the solver uses.
+      // It is the one node in an SI trace that carries an imperial tag, and it
+      // says so explicitly rather than silently changing units mid-graph.
+      formula: U.si ? "f'_c = f'_{c,\\text{MPa}}/6.894757" : "f'_c = f'_{c,\\text{psi}}/1000",
+      substitution: U.si
+        ? `f'_c = ${fmtTex(ksiToMPa(w.concrete.fc))}/6.894757 = ${fmtTex(w.concrete.fc, { dp: 2 })}\\ \\text{ksi}`
+        : `f'_c = ${fmtTex(ksiToPsi(w.concrete.fc))}/1000 = ${fmtTex(w.concrete.fc, { dp: 2 })}\\ \\text{ksi}`,
       inputs: [fc],
+      // The in-lb trace is unchanged from before SI mode existed (it is
+      // snapshotted), so the seam note is emitted only where it is news.
+      ...(U.si
+        ? {
+            note: "unit seam: the P–M equilibrium is assembled in the canonical kip/in/ksi system in both editions, so f'_c is carried into the solver in ksi; every ACI 318M coefficient consumed elsewhere is applied in MPa",
+          }
+        : {}),
     });
   });
 }
 
-/** Eq. (22.4.2.2): Po = 0.85 f'c (A_g − A_st) + f_y A_st. */
+/**
+ * Eq. (22.4.2.2): Po = 0.85 f'c (A_g − A_st) + f_y A_st.
+ *
+ * The expression and the 0.85 are identical in ACI 318-19 and ACI 318M-19
+ * 22.4.2.2 — it is homogeneous, so there is nothing to reround. Only the system
+ * it is evaluated in changes: ksi × in² → kip in-lb, MPa × mm² → N (÷1000 → kN)
+ * in SI, exactly the ÷1000 the in-lb psi × in² → kip assembly uses elsewhere.
+ */
 export function Po(w: WallInput): Traced {
   return memo(w, "section.Po", () => {
+    const U = schemeOf(w);
     const fc = fcKsi(w);
     const ag = Ag(w);
     const ast = AstInput(w);
     const fy = fyInput(w);
-    const value = limits(nominal(w)).Po;
+    const value = U.frc(limits(nominal(w)).Po);
+    const fcCode = U.si ? ksiToMPa(w.concrete.fc) : w.concrete.fc;
+    const fyCode = U.si ? ksiToMPa(w.grade.fy) : w.grade.fy;
+    const AstCode = U.ar(nominal(w).Ast);
+    const assembled = U.si
+      ? `${fmtTex(value * 1000)}\\ \\text{N} = ${fmtTex(value)}\\ ${U.forceTex}`
+      : `${fmtTex(value)}\\ ${U.forceTex}`;
     return derive({
       id: "section.Po",
       symbol: "P_o",
       label: "nominal axial strength at zero eccentricity",
       value,
-      unit: "kip",
+      unit: U.force,
       formula: "P_o = 0.85 f'_c (A_g - A_{st}) + f_y A_{st}",
       substitution:
-        `P_o = 0.85 \\times ${fmtTex(w.concrete.fc, { dp: 2 })} \\times (${fmtTex(ag.value)} - ${fmtTex(nominal(w).Ast, { dp: 2 })})` +
-        ` + ${fmtTex(w.grade.fy, { dp: 1 })} \\times ${fmtTex(nominal(w).Ast, { dp: 2 })} = ${fmtTex(value)}\\ \\text{kip}`,
+        `P_o = 0.85 \\times ${fmtTex(fcCode, { dp: 2 })} \\times (${fmtTex(ag.value)} - ${fmtTex(AstCode, { dp: 2 })})` +
+        ` + ${fmtTex(fyCode, { dp: 1 })} \\times ${fmtTex(AstCode, { dp: 2 })} = ${assembled}`,
       ref: aci("22.4.2.2", "22.4.2.2"),
       inputs: [fc, ag, ast, fy],
+      note: U.si ? "MPa × mm² → N, reported in kN" : undefined,
     });
   });
 }
 
-/** 22.4.2.1 / Table 22.4.2.1: Pn,max = 0.80 Po for tied members. */
+/**
+ * 22.4.2.1 / Table 22.4.2.1: Pn,max = 0.80 Po for tied members.
+ * The 0.80 is dimensionless and identical in both editions.
+ */
 export function PnMax(w: WallInput): Traced {
   return memo(w, "section.Pn_max", () => {
+    const U = schemeOf(w);
     const po = Po(w);
-    const value = limits(nominal(w)).PnMax;
+    const value = U.frc(limits(nominal(w)).PnMax);
     return derive({
       id: "section.Pn_max",
       symbol: "P_{n,max}",
       label: "maximum nominal axial compressive strength",
       value,
-      unit: "kip",
+      unit: U.force,
       formula: "P_{n,max} = 0.80 P_o",
-      substitution: `P_{n,max} = 0.80 \\times ${fmtTex(po.value)} = ${fmtTex(value)}\\ \\text{kip}`,
+      substitution: `P_{n,max} = 0.80 \\times ${fmtTex(po.value)} = ${fmtTex(value)}\\ ${U.forceTex}`,
       ref: aci("22.4.2.1"),
       inputs: [po],
       note: "tied (non-spiral) member — walls",
@@ -622,23 +793,34 @@ export function PnMax(w: WallInput): Traced {
   });
 }
 
-/** Eq. (22.4.3.1): Pnt,max = f_y A_st, reported negative (tension). */
+/**
+ * Eq. (22.4.3.1): Pnt,max = f_y A_st, reported negative (tension).
+ * Homogeneous — identical in ACI 318-19 and ACI 318M-19 22.4.3.1.
+ */
 export function PntMax(w: WallInput): Traced {
   return memo(w, "section.Pnt_max", () => {
+    const U = schemeOf(w);
     const fy = fyInput(w);
     const ast = AstInput(w);
-    const value = limits(nominal(w)).PntMax;
+    const value = U.frc(limits(nominal(w)).PntMax);
+    const fyCode = U.si ? ksiToMPa(w.grade.fy) : w.grade.fy;
+    const AstCode = U.ar(nominal(w).Ast);
+    const assembled = U.si
+      ? `${fmtTex(value * 1000)}\\ \\text{N} = ${fmtTex(value)}\\ ${U.forceTex}`
+      : `${fmtTex(value)}\\ ${U.forceTex}`;
     return derive({
       id: "section.Pnt_max",
       symbol: "P_{nt,max}",
       label: "maximum nominal axial tensile strength",
       value,
-      unit: "kip",
+      unit: U.force,
       formula: "P_{nt,max} = -f_y A_{st}",
-      substitution: `P_{nt,max} = -${fmtTex(w.grade.fy, { dp: 1 })} \\times ${fmtTex(nominal(w).Ast, { dp: 2 })} = ${fmtTex(value)}\\ \\text{kip}`,
+      substitution: `P_{nt,max} = -${fmtTex(fyCode, { dp: 1 })} \\times ${fmtTex(AstCode, { dp: 2 })} = ${assembled}`,
       ref: aci("22.4.3.1", "22.4.3.1"),
       inputs: [fy, ast],
-      note: "compression positive, so the tension cap is negative",
+      note: U.si
+        ? "compression positive, so the tension cap is negative; MPa × mm² → N, reported in kN"
+        : "compression positive, so the tension cap is negative",
     });
   });
 }

@@ -127,7 +127,7 @@ function Workspace({ linkFailed }: { linkFailed: boolean }) {
           ) : (
             <>
               <WallCanvas input={deferred.input} report={deferred.report} />
-              <ResultsSummary report={report} />
+              <ResultsSummary input={input} report={report} />
               <ResultsPanels input={input} report={report} deferred={deferred} />
             </>
           )}

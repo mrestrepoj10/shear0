@@ -25,15 +25,17 @@ const POINT = z.object({ x: z.number(), y: z.number() });
 export const pdfCatalog = defineCatalog(schema, {
   components: {
     WallPlan: {
+      // Lengths arrive in the wall's *reporting* system (in | mm), already
+      // converted by `pdf-spec` — the figure is scaled relative to ℓw, so the
+      // only place the system shows is the dimension line and its label.
       props: z.object({
-        /** in */
         lw: z.number(),
-        /** in */
         h: z.number(),
-        /** bar station x-positions along ℓw, in */
+        /** bar station x-positions along ℓw */
         stations: z.array(z.number()),
-        /** provided SBE length at each end, in — null when none */
+        /** provided SBE length at each end — null when none */
         sbeLength: z.number().nullable(),
+        lengthUnit: z.string(),
       }),
       slots: [],
       description: "Plan section of the wall with bar stations",
@@ -45,6 +47,8 @@ export const pdfCatalog = defineCatalog(schema, {
         demands: z.array(
           z.object({ x: z.number(), y: z.number(), label: z.string(), ok: z.boolean() }),
         ),
+        momentUnit: z.string(),
+        forceUnit: z.string(),
       }),
       slots: [],
       description: "P-M interaction diagram: nominal and design surfaces with demand points",
@@ -108,8 +112,10 @@ export const { registry } = defineRegistry(pdfCatalog, {
               />
             ))}
             <SvgText x={10} y={y0 + wallH + 12} style={{ fontSize: 6, fill: MUTED }}>
-              {`lw = ${fmt(props.lw)} in  ·  h = ${fmt(props.h)} in  ·  ${props.stations.length} bar stations${
-                props.sbeLength === null ? "" : `  ·  SBE ${fmt(props.sbeLength)} in each end (shaded)`
+              {`lw = ${fmt(props.lw)} ${props.lengthUnit}  ·  h = ${fmt(props.h)} ${props.lengthUnit}  ·  ${props.stations.length} bar stations${
+                props.sbeLength === null
+                  ? ""
+                  : `  ·  SBE ${fmt(props.sbeLength)} ${props.lengthUnit} each end (shaded)`
               }`}
             </SvgText>
           </Svg>
@@ -162,10 +168,10 @@ export const { registry } = defineRegistry(pdfCatalog, {
               </SvgText>
             ))}
             <SvgText x={W / 2 - 30} y={H - 6} style={{ fontSize: 7, fill: MUTED }}>
-              M (kip-ft)
+              {`M (${props.momentUnit})`}
             </SvgText>
             <SvgText x={4} y={m.top - 2} style={{ fontSize: 7, fill: MUTED }}>
-              P (kip)
+              {`P (${props.forceUnit})`}
             </SvgText>
           </Svg>
           <View style={{ flexDirection: "row", gap: 12, marginTop: 2 }}>

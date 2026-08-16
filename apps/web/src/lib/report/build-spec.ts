@@ -17,6 +17,7 @@ import {
   type WallInput,
   type WallReport,
 } from "@shear0/engine";
+import { viewOf, type UnitsView } from "@/lib/units-view";
 
 export interface ReportMeta {
   /** canonical share link for this wall */
@@ -48,9 +49,19 @@ export function valueText(node: Traced<unknown>): string {
   return node.unit === "1" ? v : `${v} ${node.unit}`;
 }
 
-export function demandTitle(demand: Demands): string {
+/**
+ * `Demands` is storage, so it is canonical kip/kip-ft in both editions — unlike
+ * every traced node under it, which the engine already reports in the wall's
+ * own system. The section heading has to be moved across explicitly or a metric
+ * calc sheet would announce its load case in kip and then work it in kN.
+ */
+export function demandTitle(demand: Demands, U: UnitsView): string {
   const name = demand.label ?? demand.id;
-  return `${name} — Pu = ${fmt(demand.Pu)} kip · Mu = ${fmt(demand.Mu)} kip-ft · Vu = ${fmt(demand.Vu)} kip`;
+  return (
+    `${name} — Pu = ${fmt(U.force(demand.Pu))} ${U.forceUnit}` +
+    ` · Mu = ${fmt(U.moment(demand.Mu))} ${U.momentUnit}` +
+    ` · Vu = ${fmt(U.force(demand.Vu))} ${U.forceUnit}`
+  );
 }
 
 /**
@@ -76,52 +87,65 @@ export function flattenCheck(check: CheckResult): { node: Traced<unknown>; depth
 
 export function inputRows(input: WallInput): [string, string][] {
   const g = input.geometry;
+  const U = viewOf(input);
+  // Every input is stored canonically, so each row is a conversion; bar
+  // designations are the one exception — #3–#11 in both editions, a known
+  // limitation rather than a unit to convert.
+  const L = (inches: number) => `${fmt(U.len(inches))} ${U.lengthUnit}`;
   const rows: [string, string][] = [
     ["system", input.system === "special" ? "special structural wall (§18.10)" : "ordinary wall (Ch. 11)"],
     ["wall type", input.wallType],
-    ["length ℓw", `${fmt(g.lw)} in`],
-    ["thickness h", `${fmt(g.h)} in`],
-    ["height hw", `${fmt(g.hw)} in`],
-    ["unsupported length ℓu", `${fmt(g.lu)} in`],
+    ["length ℓw", L(g.lw)],
+    ["thickness h", L(g.h)],
+    ["height hw", L(g.hw)],
+    ["unsupported length ℓu", L(g.lu)],
     ["effective length factor k", fmt(g.k)],
-    ["cover", `${fmt(g.cover)} in`],
-    ["f'c", `${fmt(input.concrete.fc * 1000)} psi`],
+    ["cover", L(g.cover)],
+    ["f'c", `${fmt(U.stress(input.concrete.fc))} ${U.stressUnit}`],
     ["λ", fmt(input.concrete.lambda)],
-    ["fy", `${fmt(input.grade.fy)} ksi`],
+    // ACI 318M-19 Ch. 20 names the grades by their MPa value, and the engine
+    // traces f_y in MPa in SI; the in-lb sheet keeps the ksi it has always used
+    // rather than the psi `U.stress` would give.
+    ["fy", U.si ? `${fmt(U.stress(input.grade.fy))} MPa` : `${fmt(input.grade.fy)} ksi`],
     [
       "vertical steel",
-      `#${input.vertical.bar} @ ${fmt(input.vertical.spacing)} in, ${input.vertical.curtains} curtain(s)`,
+      `#${input.vertical.bar} @ ${L(input.vertical.spacing)}, ${input.vertical.curtains} curtain(s)`,
     ],
     [
       "horizontal steel",
-      `#${input.horizontal.bar} @ ${fmt(input.horizontal.spacing)} in, ${input.horizontal.curtains} curtain(s)`,
+      `#${input.horizontal.bar} @ ${L(input.horizontal.spacing)}, ${input.horizontal.curtains} curtain(s)`,
     ],
   ];
-  if (g.hu !== undefined) rows.splice(6, 0, ["story height hu", `${fmt(g.hu)} in`]);
-  if (g.hwcs !== undefined) rows.splice(6, 0, ["hwcs", `${fmt(g.hwcs)} in`]);
+  if (g.hu !== undefined) rows.splice(6, 0, ["story height hu", L(g.hu)]);
+  if (g.hwcs !== undefined) rows.splice(6, 0, ["hwcs", L(g.hwcs)]);
   if (input.endZone) {
     rows.push([
       "end-zone bars",
-      `${input.endZone.count} × #${input.endZone.bar}, first @ ${fmt(input.endZone.distanceToFirst)} in, spacing ${fmt(input.endZone.spacing)} in`,
+      `${input.endZone.count} × #${input.endZone.bar}, first @ ${L(input.endZone.distanceToFirst)}, spacing ${L(input.endZone.spacing)}`,
     ]);
   }
   if (input.seismic) {
     const s = input.seismic;
     const bits = [`SDC ${s.sdc}`];
-    if (s.deltaE !== undefined) bits.push(`δe = ${fmt(s.deltaE)} in`);
+    if (s.deltaE !== undefined) bits.push(`δe = ${L(s.deltaE)}`);
     if (s.Cd !== undefined) bits.push(`Cd = ${fmt(s.Cd)}`);
     if (s.ns !== undefined) bits.push(`ns = ${fmt(s.ns)}`);
-    if (s.hsx !== undefined) bits.push(`hsx = ${fmt(s.hsx)} in`);
+    if (s.hsx !== undefined) bits.push(`hsx = ${L(s.hsx)}`);
     rows.push(["seismic", bits.join(" · ")]);
   }
   if (input.sbe) {
     const b = input.sbe;
     rows.push([
       "provided SBE",
-      `${fmt(b.width)} × ${fmt(b.length)} in, ${b.longCount} × #${b.longBar}, ties #${b.tieBar} @ ${fmt(b.tieSpacing)} in`,
+      `${fmt(U.len(b.width))} × ${L(b.length)}, ${b.longCount} × #${b.longBar}, ties #${b.tieBar} @ ${L(b.tieSpacing)}`,
     ]);
   }
   return rows;
+}
+
+/** The edition the wall is being evaluated against, as it is printed. */
+export function standardName(input: WallInput): string {
+  return viewOf(input).si ? "ACI 318M-19" : "ACI 318-19";
 }
 
 const STATUS_SENTENCE: Record<CheckStatus, string> = {
@@ -133,6 +157,7 @@ const STATUS_SENTENCE: Record<CheckStatus, string> = {
 
 export function buildReportSpec(input: WallInput, report: WallReport, meta: ReportMeta): Spec {
   const b = new SpecBuilder();
+  const U = viewOf(input);
 
   const addCheck = (check: CheckResult): string => {
     const children: string[] = [];
@@ -162,7 +187,10 @@ export function buildReportSpec(input: WallInput, report: WallReport, meta: Repo
       "CheckBlock",
       {
         title: check.title,
-        section: `${check.ref.standard} §${check.ref.section}`,
+        // `ref.standard` is a literal "ACI 318-19" in the engine's trace types;
+        // the section numbers are shared between the two editions, so the
+        // edition name is the wall's, not the ref's.
+        section: `${standardName(input)} §${check.ref.section}`,
         eq: check.ref.eq ?? null,
         status: check.status,
       },
@@ -173,7 +201,7 @@ export function buildReportSpec(input: WallInput, report: WallReport, meta: Repo
   const children: string[] = [
     b.add("ReportHeader", {
       title: "shear wall calc sheet",
-      subtitle: `ACI 318-19 — ${STATUS_SENTENCE[report.status]}`,
+      subtitle: `${standardName(input)} — ${STATUS_SENTENCE[report.status]}`,
       status: report.status,
       generatedAt: meta.generatedAt,
       link: meta.link,
@@ -190,7 +218,7 @@ export function buildReportSpec(input: WallInput, report: WallReport, meta: Repo
   }
   for (const group of report.perDemand) {
     children.push(
-      b.add("Section", { title: demandTitle(group.demand) }, group.checks.map(addCheck)),
+      b.add("Section", { title: demandTitle(group.demand, U) }, group.checks.map(addCheck)),
     );
   }
 

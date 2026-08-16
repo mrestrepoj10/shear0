@@ -19,9 +19,10 @@
  */
 
 import { BARS, barPositions, kipFtToKipIn, type WallInput } from "@shear0/engine";
+import { viewOf } from "@/lib/units-view";
 import { DimLine } from "./dim-line";
 import { Drawing, HAIRLINE, Note, paddedViewBox } from "./drawing";
-import { dim } from "./format";
+import { dim, lenDim } from "./format";
 
 const WALL_W = 300;
 const MAX_ASPECT = 1.8;
@@ -51,6 +52,8 @@ function sample(values: number[], target: number): number[] {
 export function WallElevation({ input }: { input: WallInput }) {
   const { geometry, vertical, horizontal } = input;
   const { lw, hw } = geometry;
+  // Labels only — every coordinate below stays in canonical inches.
+  const U = viewOf(input);
 
   if (!(lw > 0) || !(hw > 0)) {
     return (
@@ -127,7 +130,7 @@ export function WallElevation({ input }: { input: WallInput }) {
     <Drawing
       viewBox={paddedViewBox({ width: WALL_W, height: H }, PAD)}
       fontSize={FONT}
-      title={`elevation — wall ${dim(hw)} in tall by ${dim(lw)} in long`}
+      title={`elevation — wall ${lenDim(U, hw)} ${U.lengthUnit} tall by ${lenDim(U, lw)} ${U.lengthUnit} long`}
       desc={
         broken
           ? "Wall elevation with a long-break symbol: the middle of the wall is removed so the drawing fits, both bands are at true scale."
@@ -210,13 +213,13 @@ export function WallElevation({ input }: { input: WallInput }) {
             />
           </g>
           <Note x={WALL_W + 8} y={extentY - 9} size={9}>
-            s ≤ {dim(relaxed)} above
+            s ≤ {lenDim(U, relaxed)} above
           </Note>
           <Note x={WALL_W + 8} y={(groundY + extentY) / 2} size={9}>
-            hoops @ {dim(sbe.tieSpacing)}
+            hoops @ {lenDim(U, sbe.tieSpacing)}
           </Note>
           <Note x={sbeW + 6} y={groundY - 10} size={9}>
-            SBE {dim(sbe.width)} × {dim(sbe.length)}
+            SBE {lenDim(U, sbe.width)} × {lenDim(U, sbe.length)}
           </Note>
         </g>
       )}
@@ -303,7 +306,7 @@ export function WallElevation({ input }: { input: WallInput }) {
       </Note>
 
       {/* dimensions: ℓw across the base, hw up the right side (broken to match) */}
-      <DimLine x1={0} y1={groundY} x2={WALL_W} y2={groundY} offset={44} label={dim(lw)} />
+      <DimLine x1={0} y1={groundY} x2={WALL_W} y2={groundY} offset={44} label={lenDim(U, lw)} />
       {sbe === undefined || extentY === null ? null : (
         <DimLine
           x1={0}
@@ -311,7 +314,7 @@ export function WallElevation({ input }: { input: WallInput }) {
           x2={0}
           y2={extentY}
           offset={-34}
-          label={dim(Math.min(extent, hw))}
+          label={lenDim(U, Math.min(extent, hw))}
           className="opacity-70"
         />
       )}
@@ -333,19 +336,19 @@ export function WallElevation({ input }: { input: WallInput }) {
             y2={0}
             offset={40}
             arrows="end"
-            label={dim(hw)}
+            label={lenDim(U, hw)}
           />
         </>
       ) : (
-        <DimLine x1={WALL_W} y1={groundY} x2={WALL_W} y2={0} offset={40} label={dim(hw)} />
+        <DimLine x1={WALL_W} y1={groundY} x2={WALL_W} y2={0} offset={40} label={lenDim(U, hw)} />
       )}
 
       <Note x={0} y={groundY + 62} size={9}>
-        hw/ℓw {dim(hw / lw, 2)} · vert #{vertical.bar} @ {dim(vertical.spacing)} · horiz #
-        {horizontal.bar} @ {dim(horizontal.spacing)} (shown sparse)
+        hw/ℓw {dim(hw / lw, 2)} · vert #{vertical.bar} @ {lenDim(U, vertical.spacing)} · horiz #
+        {horizontal.bar} @ {lenDim(U, horizontal.spacing)} (shown sparse)
         {sbe === undefined
           ? ""
-          : ` · SBE confined to ${dim(Math.min(extent, hw))} above the base [18.10.6.2(b)]`}
+          : ` · SBE confined to ${lenDim(U, Math.min(extent, hw))} above the base [18.10.6.2(b)]`}
       </Note>
     </Drawing>
   );

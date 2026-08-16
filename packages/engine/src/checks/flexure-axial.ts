@@ -11,7 +11,8 @@ import {
 import { aci, checkResult, derive, input } from "../trace";
 import type { CheckResult, Traced } from "../trace";
 import { fmtTex } from "../units";
-import { hInput, lwInput } from "../wall";
+import type { Unit } from "../units";
+import { hInput, lwInput, schemeOf } from "../wall";
 import type { Demands, WallInput } from "../wall";
 
 /**
@@ -35,6 +36,17 @@ import type { Demands, WallInput } from "../wall";
  *
  * Mu is taken as |Mu|: `barPositions` produces a layout symmetric about ℓ_w/2, so
  * the ±M halves of the interaction surface are mirror images.
+ *
+ * ## Two editions
+ * Nothing in this check carries an edition-specific coefficient: the 0.80 of
+ * 22.4.2.1, φ = 0.65 of 11.4.2.1, the Table 21.2.2 φ ramp
+ * (0.65 + 0.25(ε_t − ε_ty)/0.003) and ε_cu = 0.003 are printed identically in
+ * ACI 318-19 and ACI 318M-19, and both utilization ratios are dimensionless.
+ * What changes in SI mode is the system the demand leaves and the P–M
+ * capacities are *reported* in — kN and kN·m against kip and kip-ft, with c and
+ * x_t in mm. `section/interaction.ts` converts at its own reporting boundary, so
+ * the slice arriving here is already in the wall's system; the demand leaves are
+ * moved with `schemeOf(w)` to match.
  */
 
 const PHI_COMPRESSION = 0.65;
@@ -43,28 +55,39 @@ const PHI_COMPRESSION = 0.65;
 // boundary-element checks reading the same load combination share one node.
 const demandNodes = new WeakMap<Demands, Map<string, Traced>>();
 
-function demandInput(d: Demands, id: string, symbol: string, label: string, value: number, unit: "kip" | "kip-ft"): Traced {
+function demandInput(d: Demands, id: string, symbol: string, label: string, value: number, unit: Unit): Traced {
   let byId = demandNodes.get(d);
   if (byId === undefined) {
     byId = new Map();
     demandNodes.set(d, byId);
   }
-  let node = byId.get(id);
+  // Keyed by unit as well as id: a single graph is built in one system, but the
+  // same Demands object may be reported by walls in either edition.
+  const key = `${id}:${unit}`;
+  let node = byId.get(key);
   if (node === undefined) {
     node = input(id, symbol, label, value, unit, d.label ?? d.id);
-    byId.set(id, node);
+    byId.set(key, node);
   }
   return node;
 }
 
 export function checkFlexureAxial(w: WallInput, demand: Demands): CheckResult {
+  const U = schemeOf(w);
+  // Demands are stored canonically; `Pu` stays kip because that is what the
+  // fiber solver takes, while `PuCode`/`MuCode` are the reported magnitudes.
   const Pu = demand.Pu;
   const Mu = Math.abs(demand.Mu);
+  const PuCode = U.frc(Pu);
+  const MuCode = U.mom(Mu);
 
-  const PuNode = demandInput(demand, "flexure.Pu", "P_u", "factored axial force", Pu, "kip");
-  const MuNode = demandInput(demand, "flexure.Mu", "M_u", "factored in-plane moment", Mu, "kip-ft");
+  const PuNode = demandInput(demand, "flexure.Pu", "P_u", "factored axial force", PuCode, U.force);
+  const MuNode = demandInput(demand, "flexure.Mu", "M_u", "factored in-plane moment", MuCode, U.moment);
 
   // --- 22.4.2.1 axial cap ---------------------------------------------------
+  // 0.80 (22.4.2.1) and φ = 0.65 (Table 21.2.2, compression-controlled) are
+  // dimensionless and printed identically in ACI 318M-19 22.4.2.1 / 21.2.2;
+  // only the reported force unit changes.
   const pnMax = PnMax(w);
   const phiPnMaxValue = PHI_COMPRESSION * pnMax.value;
   const phiPnMax = derive({
@@ -72,16 +95,16 @@ export function checkFlexureAxial(w: WallInput, demand: Demands): CheckResult {
     symbol: "φP_{n,max}",
     label: "design axial strength cap",
     value: phiPnMaxValue,
-    unit: "kip",
+    unit: U.force,
     formula: "φP_{n,max} = 0.65 \\times 0.80 P_o",
-    substitution: `φP_{n,max} = 0.65 \\times ${fmtTex(pnMax.value)} = ${fmtTex(phiPnMaxValue)}\\ \\text{kip}`,
+    substitution: `φP_{n,max} = 0.65 \\times ${fmtTex(pnMax.value)} = ${fmtTex(phiPnMaxValue)}\\ ${U.forceTex}`,
     ref: aci("22.4.2.1"),
     inputs: [pnMax],
     note: "φ = 0.65, compression-controlled (11.4.2.1, Table 21.2.2)",
   });
 
-  const axialRatio = phiPnMaxValue > 0 ? Pu / phiPnMaxValue : 0;
-  const axialOk = Pu <= phiPnMaxValue;
+  const axialRatio = phiPnMaxValue > 0 ? PuCode / phiPnMaxValue : 0;
+  const axialOk = PuCode <= phiPnMaxValue;
   const axialUtilization = derive({
     id: "flexure.axial_utilization",
     symbol: "P_u/φP_{n,max}",
@@ -89,7 +112,7 @@ export function checkFlexureAxial(w: WallInput, demand: Demands): CheckResult {
     value: axialRatio,
     unit: "1",
     formula: "P_u/φP_{n,max} \\le 1.0",
-    substitution: `${fmtTex(Pu)} / ${fmtTex(phiPnMaxValue)} = ${fmtTex(axialRatio, { dp: 3 })}`,
+    substitution: `${fmtTex(PuCode)} / ${fmtTex(phiPnMaxValue)} = ${fmtTex(axialRatio, { dp: 3 })}`,
     ref: aci("11.4.2.1"),
     inputs: [PuNode, phiPnMax],
     status: axialOk ? "ok" : "ng",
@@ -107,9 +130,9 @@ export function checkFlexureAxial(w: WallInput, demand: Demands): CheckResult {
       symbol: "φM_n",
       label: "design flexural strength",
       value: 0,
-      unit: "kip-ft",
+      unit: U.moment,
       formula: "φM_n = φ(c)\\,M_n(c),\\ \\ φ(c)P_n(c) = P_u",
-      substitution: `no c satisfies φ(c)P_n(c) = ${fmtTex(Pu)}\\ \\text{kip} — P_u is outside the design axial range`,
+      substitution: `no c satisfies φ(c)P_n(c) = ${fmtTex(PuCode)}\\ ${U.forceTex} — P_u is outside the design axial range`,
       ref: aci("11.5.2.1 / 22.4"),
       inputs: [PuNode, po],
       status: "ng",
@@ -130,11 +153,14 @@ export function checkFlexureAxial(w: WallInput, demand: Demands): CheckResult {
     symbol: "c",
     label: "neutral axis depth at the design axial force",
     value: slice.c,
-    unit: "in",
+    unit: U.length,
+    // ε_cu = 0.003 and a = β1·c are 22.2.2.1 / 22.2.2.4.1, identical in both
+    // editions; β1 itself branches inside materials.beta1 (ACI 318M-19
+    // Table 22.2.2.4.3). `slice` arrives already in the wall's system.
     formula: "\\text{solve } φ(c)\\,P_n(c) = P_u \\quad (ε_{cu} = 0.003,\\ a = β_1 c)",
     substitution:
       `φ(c)P_n(c) = ${fmtTex(slice.phi, { dp: 3 })} \\times ${fmtTex(slice.Pn)} = ${fmtTex(slice.phi * slice.Pn)}` +
-      ` = P_u = ${fmtTex(Pu)}\\ \\text{kip} \\Rightarrow c = ${fmtTex(slice.c, { dp: 2 })}\\ \\text{in}`,
+      ` = P_u = ${fmtTex(PuCode)}\\ ${U.forceTex} \\Rightarrow c = ${fmtTex(slice.c, { dp: 2 })}\\ ${U.lengthTex}`,
     ref: aci("22.2.2"),
     inputs: [PuNode, fcKsi(w), lwInput(w), hInput(w), fyInput(w), AstInput(w)],
     note: "fiber section: rectangular stress block plus every vertical bar station",
@@ -173,9 +199,9 @@ export function checkFlexureAxial(w: WallInput, demand: Demands): CheckResult {
     symbol: "M_n",
     label: "nominal flexural strength",
     value: slice.Mn,
-    unit: "kip-ft",
+    unit: U.moment,
     formula: "M_n = C_c(ℓ_w/2 - a/2) + \\sum A_{s,i}\\,σ_i\\,(ℓ_w/2 - x_i)",
-    substitution: `M_n = ${fmtTex(slice.Mn)}\\ \\text{kip-ft at } c = ${fmtTex(slice.c, { dp: 2 })}\\ \\text{in},\\ P_n = ${fmtTex(slice.Pn)}\\ \\text{kip}`,
+    substitution: `M_n = ${fmtTex(slice.Mn)}\\ \\text{${U.moment} at } c = ${fmtTex(slice.c, { dp: 2 })}\\ ${U.lengthTex},\\ P_n = ${fmtTex(slice.Pn)}\\ ${U.forceTex}`,
     ref: aci("22.3.1.1"),
     inputs: [cNode, fcKsi(w), hInput(w), lwInput(w), fyInput(w), AstInput(w)],
     note: "moments taken about the section centroid ℓ_w/2",
@@ -186,14 +212,16 @@ export function checkFlexureAxial(w: WallInput, demand: Demands): CheckResult {
     symbol: "φM_n",
     label: "design flexural strength",
     value: slice.phiMn,
-    unit: "kip-ft",
+    unit: U.moment,
     formula: "φM_n = φ\\,M_n",
-    substitution: `φM_n = ${fmtTex(slice.phi, { dp: 3 })} \\times ${fmtTex(slice.Mn)} = ${fmtTex(slice.phiMn)}\\ \\text{kip-ft}`,
+    substitution: `φM_n = ${fmtTex(slice.phi, { dp: 3 })} \\times ${fmtTex(slice.Mn)} = ${fmtTex(slice.phiMn)}\\ \\text{${U.moment}}`,
     ref: aci("11.5.1.1"),
     inputs: [phiNode, MnNode],
   });
 
-  const ratio = slice.phiMn > 0 ? Mu / slice.phiMn : Number.POSITIVE_INFINITY;
+  // Dimensionless — identical in both editions, but built from the already
+  // converted leaves so the substitution reads consistently.
+  const ratio = slice.phiMn > 0 ? MuCode / slice.phiMn : Number.POSITIVE_INFINITY;
   const utilization = derive({
     id: "flexure.utilization",
     symbol: "M_u/φM_n",
@@ -201,7 +229,7 @@ export function checkFlexureAxial(w: WallInput, demand: Demands): CheckResult {
     value: ratio,
     unit: "1",
     formula: "M_u/φM_n \\le 1.0",
-    substitution: `${fmtTex(Mu)} / ${fmtTex(slice.phiMn)} = ${fmtTex(ratio, { dp: 3 })}`,
+    substitution: `${fmtTex(MuCode)} / ${fmtTex(slice.phiMn)} = ${fmtTex(ratio, { dp: 3 })}`,
     ref: aci("11.5.1.1"),
     inputs: [MuNode, phiMn],
     status: ratio <= 1 ? "ok" : "ng",

@@ -31,26 +31,29 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartExportButtons } from "@/components/design/chart-export";
 import { num, statusText } from "@/components/design/status";
+import { viewOf, type UnitsView } from "@/lib/units-view";
 import { useSetSelection } from "@/lib/wall-state";
 import { cn } from "@/lib/utils";
 
 const CURVE_POINTS = 120;
 
+const AXIS_FORMAT = (value: number) => fmt(value, { dp: 0 });
+
 /**
  * Module constants, not inline literals: the chart wrapper memoizes its
  * definition against these props, and a fresh object every render would rebuild
- * the whole scene on every hover.
+ * the whole scene on every hover. One frozen pair per unit system, for the same
+ * reason — the label is the only thing that changes.
  */
-const X_AXIS = {
-  label: "M  (kip-ft)",
-  format: (value: number) => fmt(value, { dp: 0 }),
-  include: [0],
-} as const;
-
-const Y_AXIS = {
-  label: "P  (kip)  — compression positive",
-  format: (value: number) => fmt(value, { dp: 0 }),
-  include: [0],
+const AXES = {
+  "in-lb": {
+    x: { label: "M  (kip-ft)", format: AXIS_FORMAT, include: [0] },
+    y: { label: "P  (kip)  — compression positive", format: AXIS_FORMAT, include: [0] },
+  },
+  si: {
+    x: { label: "M  (kN·m)", format: AXIS_FORMAT, include: [0] },
+    y: { label: "P  (kN)  — compression positive", format: AXIS_FORMAT, include: [0] },
+  },
 } as const;
 
 interface CurveMeta {
@@ -146,6 +149,8 @@ export const InteractionChart = memo(function InteractionChart({
 }) {
   const [focus, setFocus] = useState<XyFocus<PmMeta> | null>(null);
   const plotRef = useRef<HTMLDivElement>(null);
+  const U = viewOf(input);
+  const code = U.si ? "ACI 318M-19" : "ACI 318-19";
   // No-op outside a WallProvider, so /learn can still mount this chart.
   const setSelection = useSetSelection();
 
@@ -191,15 +196,19 @@ export const InteractionChart = memo(function InteractionChart({
       return {
         id: demand.id,
         label: demand.label ?? demand.id,
-        x: Math.abs(demand.Mu),
-        y: demand.Pu,
+        // The curves come out of the engine already in the wall's reporting
+        // system, but `Demands` is storage — canonical kip/kip-ft in both
+        // editions — so the markers have to be moved onto the curve's axes.
+        // φMn comes off the check's traced capacity node and is already there.
+        x: U.moment(Math.abs(demand.Mu)),
+        y: U.force(demand.Pu),
         token: tokenFor(check?.status),
         meta: {
           kind: "demand",
           status: check?.status ?? "na",
           utilization: check?.utilization?.value,
           phiMn: check?.capacity?.value,
-          Vu: demand.Vu,
+          Vu: U.force(demand.Vu),
         } as MarkerMeta,
       };
     });
@@ -217,7 +226,9 @@ export const InteractionChart = memo(function InteractionChart({
     const areas: XyArea[] = [{ id: "design-surface", points: surfaceBand(designXy), token: "line" }];
 
     return { series, markers, cap, rules, areas };
-  }, [input, report]);
+  }, [input, report, U]);
+
+  const tooltip = useMemo(() => pmTooltip(U), [U]);
 
   return (
     <Card size="sm" className="gap-2">
@@ -231,7 +242,7 @@ export const InteractionChart = memo(function InteractionChart({
           </CardTitle>
           <span className="flex items-center gap-2">
             <span className="truncate font-mono text-xs2 text-muted-foreground">
-              ACI 318-19 §22.2 / §22.4
+              {code} §22.2 / §22.4
             </span>
             <ChartExportButtons containerRef={plotRef} filename="pm-interaction" />
           </span>
@@ -247,9 +258,9 @@ export const InteractionChart = memo(function InteractionChart({
           rules={rules}
           areas={areas}
           height={320}
-          x={X_AXIS}
-          y={Y_AXIS}
-          tooltip={pmTooltip}
+          x={AXES[U.system].x}
+          y={AXES[U.system].y}
+          tooltip={tooltip}
           onFocusChange={(next) => {
             setFocus(next);
             // Publish the traced slice: while the pointer follows either curve,
@@ -268,9 +279,9 @@ export const InteractionChart = memo(function InteractionChart({
         />
         </div>
 
-        <ChartSummary cap={cap} markers={markers} />
+        <ChartSummary cap={cap} markers={markers} U={U} code={code} />
 
-        <Readout focus={focus} cap={cap} markers={markers} />
+        <Readout focus={focus} cap={cap} markers={markers} U={U} />
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-2xs text-muted-foreground">
           <Swatch dashed>nominal</Swatch>
@@ -296,17 +307,21 @@ export const InteractionChart = memo(function InteractionChart({
 function ChartSummary({
   cap,
   markers,
+  U,
+  code,
 }: {
   cap: number;
   markers: readonly XyMarker<PmMeta>[];
+  U: UnitsView;
+  code: string;
 }) {
   const demands = markers.filter((m) => m.meta?.kind === "demand");
 
   return (
     <div className="sr-only">
       <p>
-        Design interaction surface with the axial compression capped at {num(cap)} kip per ACI
-        318-19 §22.4.2.1.{" "}
+        Design interaction surface with the axial compression capped at {num(cap)} {U.forceUnit} per{" "}
+        {code} §22.4.2.1.{" "}
         {demands.length === 0
           ? "No load cases are applied, so no demand points are plotted."
           : `${demands.length} factored demand point${demands.length === 1 ? "" : "s"} plotted against it.`}
@@ -317,9 +332,9 @@ function ChartSummary({
           <thead>
             <tr>
               <th scope="col">load case</th>
-              <th scope="col">Pu (kip)</th>
-              <th scope="col">Mu (kip-ft)</th>
-              <th scope="col">φMn at that Pu (kip-ft)</th>
+              <th scope="col">Pu ({U.forceUnit})</th>
+              <th scope="col">Mu ({U.momentUnit})</th>
+              <th scope="col">φMn at that Pu ({U.momentUnit})</th>
               <th scope="col">Mu / φMn</th>
               <th scope="col">result</th>
             </tr>
@@ -392,22 +407,24 @@ function Dot({ token, children }: { token: "ok" | "ng"; children: ReactNode }) {
  * The cursor-anchored version of the readout below: same numbers, at the
  * point. Plain text with newlines — the chart tooltip renders pre-line.
  */
-function pmTooltip(focus: XyFocus<PmMeta>): string {
-  const meta = focus.meta;
-  if (meta === undefined) return focus.label;
-  if (meta.kind === "demand") {
+function pmTooltip(U: UnitsView) {
+  return (focus: XyFocus<PmMeta>): string => {
+    const meta = focus.meta;
+    if (meta === undefined) return focus.label;
+    if (meta.kind === "demand") {
+      return [
+        focus.label,
+        `Mu ${num(focus.x)} ${U.momentUnit} · Pu ${num(focus.y)} ${U.forceUnit}`,
+        `Mu/φMn ${num(meta.utilization, 3)} — ${meta.status === "ok" ? "inside" : meta.status === "ng" ? "outside" : "n/a"}`,
+      ].join("\n");
+    }
+    const design = meta.kind === "design";
     return [
-      focus.label,
-      `Mu ${num(focus.x)} kip-ft · Pu ${num(focus.y)} kip`,
-      `Mu/φMn ${num(meta.utilization, 3)} — ${meta.status === "ok" ? "inside" : meta.status === "ng" ? "outside" : "n/a"}`,
+      design ? "design surface" : "nominal surface",
+      `${design ? "φM" : "M"}n ${num(focus.x)} ${U.momentUnit} · ${design ? "φP" : "P"}n ${num(focus.y)} ${U.forceUnit}${meta.capped ? " (cap)" : ""}`,
+      `c ${num(meta.c)} ${U.lengthUnit} · φ ${num(meta.phi, 3)} · εt ${Number.isFinite(meta.epsT) ? num(meta.epsT, 5) : "∞"}`,
     ].join("\n");
-  }
-  const design = meta.kind === "design";
-  return [
-    design ? "design surface" : "nominal surface",
-    `${design ? "φM" : "M"}n ${num(focus.x)} kip-ft · ${design ? "φP" : "P"}n ${num(focus.y)} kip${meta.capped ? " (cap)" : ""}`,
-    `c ${num(meta.c)} in · φ ${num(meta.phi, 3)} · εt ${Number.isFinite(meta.epsT) ? num(meta.epsT, 5) : "∞"}`,
-  ].join("\n");
+  };
 }
 
 /**
@@ -418,17 +435,19 @@ function Readout({
   focus,
   cap,
   markers,
+  U,
 }: {
   focus: XyFocus<PmMeta> | null;
   cap: number;
   markers: readonly XyMarker<PmMeta>[];
+  U: UnitsView;
 }) {
   const meta = focus?.meta;
 
   if (focus === null || meta === undefined) {
     return (
       <p aria-live="polite" className="min-h-8 font-mono text-xs2 leading-4 text-muted-foreground">
-        φP<sub>n</sub> capped at 0.65 × 0.80 P<sub>o</sub> = {num(cap)} kip (22.4.2.1) — the flat
+        φP<sub>n</sub> capped at 0.65 × 0.80 P<sub>o</sub> = {num(cap)} {U.forceUnit} (22.4.2.1) — the flat
         top.
         <br />
         {markers.length === 0 ? "no load cases" : "hover or focus the chart to read a point"}
@@ -441,12 +460,12 @@ function Readout({
       <p aria-live="polite" className="min-h-8 font-mono text-xs2 leading-4">
         <span className={statusText(meta.status)}>{focus.label}</span>{" "}
         <span className="text-muted-foreground">
-          M<sub>u</sub> = {num(focus.x)} kip-ft · P<sub>u</sub> = {num(focus.y)} kip · V
-          <sub>u</sub> = {num(meta.Vu)} kip
+          M<sub>u</sub> = {num(focus.x)} {U.momentUnit} · P<sub>u</sub> = {num(focus.y)}{" "}
+          {U.forceUnit} · V<sub>u</sub> = {num(meta.Vu)} {U.forceUnit}
         </span>
         <br />
         <span className="text-muted-foreground">
-          φM<sub>n</sub> = {num(meta.phiMn)} kip-ft · M<sub>u</sub>/φM<sub>n</sub> ={" "}
+          φM<sub>n</sub> = {num(meta.phiMn)} {U.momentUnit} · M<sub>u</sub>/φM<sub>n</sub> ={" "}
         </span>
         <span className={statusText(meta.status)}>{num(meta.utilization, 3)}</span>
       </p>
@@ -457,9 +476,10 @@ function Readout({
   return (
     <p aria-live="polite" className="min-h-8 font-mono text-xs2 leading-4 text-muted-foreground">
       {design ? "design" : "nominal"} — {design ? "φM" : "M"}
-      <sub>n</sub> = {num(focus.x)} kip-ft · {design ? "φP" : "P"}
-      <sub>n</sub> = {num(focus.y)} kip{meta.capped ? " (at the axial cap)" : ""}
-      <br />c = {num(meta.c)} in · φ = {num(meta.phi, 3)} · ε<sub>t</sub> ={" "}
+      <sub>n</sub> = {num(focus.x)} {U.momentUnit} · {design ? "φP" : "P"}
+      <sub>n</sub> = {num(focus.y)} {U.forceUnit}
+      {meta.capped ? " (at the axial cap)" : ""}
+      <br />c = {num(meta.c)} {U.lengthUnit} · φ = {num(meta.phi, 3)} · ε<sub>t</sub> ={" "}
       {Number.isFinite(meta.epsT) ? num(meta.epsT, 5) : "∞ (pure tension)"}
     </p>
   );

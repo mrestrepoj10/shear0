@@ -11,8 +11,9 @@ import { aci, checkResult, constant, derive, input } from "../trace";
 import type { CheckResult, Traced } from "../trace";
 import { AstInput, cAt, fcKsi, fyInput, mprAt, sectionAt } from "../section/interaction";
 import { lambdaInput } from "../materials";
-import { fmtTex, kipFtToKipIn, ksiToPsi } from "../units";
-import { Acv, hInput, hwcsInput, hwcsOverLw, hwcsValue, lwInput } from "../wall";
+import { fmtTex, kipFtToKipIn } from "../units";
+import type { UnitScheme } from "../units";
+import { Acv, hInput, hwcsInput, hwcsOverLw, hwcsValue, lwInput, schemeOf } from "../wall";
 import type { Demands, WallInput } from "../wall";
 import { rhoProvidedNode } from "./min-reinforcement";
 import { alphaC } from "./shear-in-plane";
@@ -24,13 +25,13 @@ const NS_VE = "sw.ve";
 const NS = "sw.shear";
 
 export interface AmplifiedShear {
-  /** V_e = Ω_v ω_v V_u ≤ 3V_u, kip */
+  /** V_e = Ω_v ω_v V_u ≤ 3V_u, in the force unit of the edition (kip / kN) */
   Ve: Traced;
   /** ω_v, dynamic amplification, Eq. (18.10.3.1.3) */
   omegaV: Traced;
   /** Ω_v, overstrength, Table 18.10.3.1.2 */
   OmegaV: Traced;
-  /** M_pr at this combination's P_u, kip-ft */
+  /** M_pr at this combination's P_u, in the moment unit of the edition (kip-ft / kN·m) */
   Mpr: Traced;
 }
 
@@ -62,40 +63,48 @@ export function amplifiedShear(w: WallInput, demand: Demands): AmplifiedShear {
 }
 
 function buildAmplifiedShear(w: WallInput, demand: Demands): AmplifiedShear {
+  // 18.10.3.1 is dimensionless throughout (Ω_v, ω_v and the 3V_u cap are the
+  // same in both editions), but V_e and its force/moment leaves are reported in
+  // the units of the edition in force — kip/kip-ft or kN/kN·m.
+  const U = schemeOf(w);
   const ratio = hwcsOverLw(w);
   const hwcs = hwcsInput(w);
+  const VuCode = U.frc(Math.abs(demand.Vu));
   const Vu = input(
     `${NS_VE}.Vu`,
     "V_u",
     `factored in-plane shear (${demand.label ?? demand.id})`,
-    Math.abs(demand.Vu),
-    "kip",
+    VuCode,
+    U.force,
   );
   const Mu = input(
     `${NS_VE}.Mu`,
     "M_u",
     `factored in-plane moment (${demand.label ?? demand.id})`,
-    Math.abs(demand.Mu),
-    "kip-ft",
+    U.mom(Math.abs(demand.Mu)),
+    U.moment,
   );
   const Pu = input(
     `${NS_VE}.Pu`,
     "P_u",
     `factored axial force (${demand.label ?? demand.id})`,
-    demand.Pu,
-    "kip",
+    U.frc(demand.Pu),
+    U.force,
   );
 
   // --- M_pr and Ω_v (Table 18.10.3.1.2) ------------------------------------
+  // `mprAt` already reports in the wall's moment unit (kip-ft | kN·m) — the
+  // conversion happens at the interaction module's reporting boundary, so it
+  // must not be applied a second time here.
   const MprValue = mprAt(w, demand.Pu);
   const Mpr = derive({
     id: `${NS_VE}.Mpr`,
     symbol: "M_pr",
     label: "probable flexural strength",
     value: MprValue,
-    unit: "kip-ft",
+    unit: U.moment,
     formula: "M_{pr} = M_n(1.25 f_y,\\ \\phi = 1.0)\\ \\text{at}\\ P_u",
-    substitution: `M_{pr} = ${fmtTex(MprValue)}\\ \\text{kip-ft at } P_u = ${fmtTex(demand.Pu)}\\ \\text{kip}`,
+    substitution: `M_{pr} = ${fmtTex(MprValue)}\\ ${U.si ? "\\text{kN·m}" : "\\text{kip-ft}"}\\text{ at } P_u = ${fmtTex(U.frc(demand.Pu))}\\ ${U.forceTex}`,
     ref: aci("18.10.3.1.2"),
     inputs: [Pu, fcKsi(w), lwInput(w), hInput(w), fyInput(w), AstInput(w)],
     note: "fiber section re-solved with f_y replaced by 1.25 f_y (R18.10.3.1)",
@@ -111,7 +120,9 @@ function buildAmplifiedShear(w: WallInput, demand: Demands): AmplifiedShear {
     aci("18.10.3.1.2", "Table 18.10.3.1.2"),
     "may be reduced by a detailed analysis of probable strength, but never below 1.0",
   );
-  const mprRatioValue = Math.abs(demand.Mu) > 0 ? MprValue / Math.abs(demand.Mu) : Infinity;
+  // A ratio of two moments — identical in both editions, but assembled from the
+  // already-converted leaves so the substitution reads consistently.
+  const mprRatioValue = Mu.value > 0 ? MprValue / Mu.value : Infinity;
   const mprRatio = derive({
     id: `${NS_VE}.Mpr_over_Mu`,
     symbol: "M_pr/M_u",
@@ -119,7 +130,7 @@ function buildAmplifiedShear(w: WallInput, demand: Demands): AmplifiedShear {
     value: mprRatioValue,
     unit: "1",
     formula: "M_{pr}/M_u",
-    substitution: `${fmtTex(MprValue)} / ${fmtTex(Math.abs(demand.Mu))} = ${fmtTex(mprRatioValue, { dp: 3 })}`,
+    substitution: `${fmtTex(MprValue)} / ${fmtTex(Mu.value)} = ${fmtTex(mprRatioValue, { dp: 3 })}`,
     ref: aci("18.10.3.1.2", "Table 18.10.3.1.2"),
     inputs: [Mpr, Mu],
   });
@@ -146,6 +157,14 @@ function buildAmplifiedShear(w: WallInput, demand: Demands): AmplifiedShear {
   });
 
   // --- ω_v (Eq. 18.10.3.1.3) ------------------------------------------------
+  // n_s ≥ 0.007 h_wcs. Both editions print the coefficient as **0.007** — it is
+  // absent from the ACI 318M-19 Appendix C list of nonhomogeneous equations, and
+  // 18.10.3.1.3 on the metric page carries no requalification of h_wcs. But the
+  // expression is dimensional (a story count per unit height), so 0.007 is only
+  // meaningful on the inch basis it was calibrated for: read literally against
+  // h_wcs in mm it would demand ~25x the stories. Rather than invent a metric
+  // constant the Code does not print, SI mode applies the printed 0.007 to
+  // h_wcs converted to inches, and the trace says so.
   const nsFloorCoeff = constant(
     `${NS_VE}.ns_floor_coeff`,
     "0.007",
@@ -153,9 +172,12 @@ function buildAmplifiedShear(w: WallInput, demand: Demands): AmplifiedShear {
     0.007,
     "1",
     aci("18.10.3.1.3"),
-    "in-lb edition: n_s ≥ 0.007 h_wcs with h_wcs in inches",
+    U.si
+      ? "ACI 318M-19 18.10.3.1.3 prints the same 0.007 with no metric requalification of h_wcs; it is applied here on the inch basis it was calibrated for"
+      : "in-lb edition: n_s ≥ 0.007 h_wcs with h_wcs in inches",
   );
-  const nsFloorValue = 0.007 * hwcsValue(w);
+  const hwcsIn = hwcsValue(w);
+  const nsFloorValue = 0.007 * hwcsIn;
   const nsFloor = derive({
     id: `${NS_VE}.ns_floor`,
     symbol: "0.007h_wcs",
@@ -163,10 +185,14 @@ function buildAmplifiedShear(w: WallInput, demand: Demands): AmplifiedShear {
     value: nsFloorValue,
     unit: "1",
     formula: "n_s \\ge 0.007\\,h_{wcs}",
-    substitution: `0.007 \\times ${fmtTex(hwcsValue(w))} = ${fmtTex(nsFloorValue, { dp: 2 })}`,
+    substitution: U.si
+      ? `0.007 \\times \\dfrac{${fmtTex(hwcs.value)}}{25.4} = 0.007 \\times ${fmtTex(hwcsIn)} = ${fmtTex(nsFloorValue, { dp: 2 })}`
+      : `0.007 \\times ${fmtTex(hwcsIn)} = ${fmtTex(nsFloorValue, { dp: 2 })}`,
     ref: aci("18.10.3.1.3"),
     inputs: [nsFloorCoeff, hwcs],
-    note: "accounts for buildings with large story heights [R18.10.3.1.3]",
+    note: U.si
+      ? "accounts for buildings with large story heights [R18.10.3.1.3]; h_wcs is taken in inches because ACI 318M-19 prints the 0.007 coefficient unchanged and unqualified — see the coefficient note"
+      : "accounts for buildings with large story heights [R18.10.3.1.3]",
   });
 
   const nsGiven = input(
@@ -229,15 +255,15 @@ function buildAmplifiedShear(w: WallInput, demand: Demands): AmplifiedShear {
   });
 
   // --- V_e ------------------------------------------------------------------
-  const rawValue = OmegaValue * omegaValue * Math.abs(demand.Vu);
+  const rawValue = OmegaValue * omegaValue * VuCode;
   const raw = derive({
     id: `${NS_VE}.Ve_raw`,
     symbol: "Ω_vω_vV_u",
     label: "amplified shear before the 3V_u cap",
     value: rawValue,
-    unit: "kip",
+    unit: U.force,
     formula: "\\Omega_v\\,\\omega_v\\,V_u",
-    substitution: `${fmtTex(OmegaValue, { dp: 3 })} \\times ${fmtTex(omegaValue, { dp: 3 })} \\times ${fmtTex(Math.abs(demand.Vu))} = ${fmtTex(rawValue)}\\ \\text{kip}`,
+    substitution: `${fmtTex(OmegaValue, { dp: 3 })} \\times ${fmtTex(omegaValue, { dp: 3 })} \\times ${fmtTex(VuCode)} = ${fmtTex(rawValue)}\\ ${U.forceTex}`,
     ref: aci("18.10.3.1", "18.10.3.1"),
     inputs: [OmegaV, omegaV, Vu],
   });
@@ -251,15 +277,16 @@ function buildAmplifiedShear(w: WallInput, demand: Demands): AmplifiedShear {
     aci("18.10.3.1", "18.10.3.1"),
     "Ω_v·ω_v need not exceed 3.0",
   );
-  const capValue = 3 * Math.abs(demand.Vu);
+  // The 3V_u cap is dimensionless — identical in ACI 318M-19 18.10.3.1.
+  const capValue = 3 * VuCode;
   const cap = derive({
     id: `${NS_VE}.cap`,
     symbol: "3V_u",
     label: "upper limit on the design shear",
     value: capValue,
-    unit: "kip",
+    unit: U.force,
     formula: "3\\,V_u",
-    substitution: `3 \\times ${fmtTex(Math.abs(demand.Vu))} = ${fmtTex(capValue)}\\ \\text{kip}`,
+    substitution: `3 \\times ${fmtTex(VuCode)} = ${fmtTex(capValue)}\\ ${U.forceTex}`,
     ref: aci("18.10.3.1", "18.10.3.1"),
     inputs: [capCoeff, Vu],
   });
@@ -271,9 +298,9 @@ function buildAmplifiedShear(w: WallInput, demand: Demands): AmplifiedShear {
     symbol: "V_e",
     label: "design shear force for special structural walls",
     value: VeValue,
-    unit: "kip",
+    unit: U.force,
     formula: "V_e = \\min\\left(\\Omega_v\\,\\omega_v\\,V_u,\\ 3V_u\\right)",
-    substitution: `\\min(${fmtTex(rawValue)},\\ ${fmtTex(capValue)}) = ${fmtTex(VeValue)}\\ \\text{kip}`,
+    substitution: `\\min(${fmtTex(rawValue)},\\ ${fmtTex(capValue)}) = ${fmtTex(VeValue)}\\ ${U.forceTex}`,
     ref: aci("18.10.3.1", "18.10.3.1"),
     inputs: [raw, cap],
     note: capped ? "the 3V_u cap governs" : "the 3V_u cap does not govern",
@@ -287,50 +314,58 @@ function buildAmplifiedShear(w: WallInput, demand: Demands): AmplifiedShear {
  *
  * V_n = (α_c λ√f'c + ρ_t f_yt) A_cv (Eq. 18.10.4.1, identical in form to
  * Eq. 11.5.4.3), limited by 8√f'c·A_cv for all segments sharing a lateral force
- * (18.10.4.4) and by 10√f'c·A_cw for an individual vertical segment. This engine
- * models one segment, so A_cw = A_cv and the 8√f'c limit always governs — both
- * are traced so the reader can see why.
+ * (18.10.4.4) and by 10√f'c·A_cw for an individual vertical segment (18.10.4.5).
+ * This engine models one segment, so A_cw = A_cv and the 8√f'c limit always
+ * governs — both are traced so the reader can see why.
+ *
+ * The limits are nonhomogeneous; ACI 318M-19 prints 0.66√f'c·A_cv (18.10.4.4)
+ * and 0.83√f'c·A_cw (18.10.4.5), in MPa and mm².
  *
  * The demand is **V_e**, not V_u (18.10.3.1).
  */
 export function checkSpecialShear(w: WallInput, demand: Demands): CheckResult {
+  const U = schemeOf(w);
   const acv = Acv(w);
-  const sqrt = sqrtFcNode(w, NS);
+  const sqrt = sqrtFcNode(w, NS, U);
   const lambda = lambdaInput(w.concrete);
   const ac = alphaC(w, demand);
   const rhoT = rhoProvidedNode(w, NS, "t", w.horizontal);
   const ve = amplifiedShear(w, demand);
+  const sqrtDp = U.si ? 3 : 1;
 
+  // Eq. (18.10.4.1) is the same expression in both editions; α_c carries the
+  // 3.0/2.0 → 0.25/0.17 split of 18.10.4.1 (see `alphaC`, 11.5.4.3).
   const VncValue = (ac.value * w.concrete.lambda * sqrt.value * acv.value) / 1000;
   const Vnc = derive({
     id: `${NS}.Vnc`,
     symbol: "V_nc",
     label: "concrete contribution to in-plane shear strength",
     value: VncValue,
-    unit: "kip",
+    unit: U.force,
     formula: "V_{nc} = \\alpha_c\\,\\lambda\\sqrt{f'_c}\\,A_{cv}",
-    substitution: `${fmtTex(ac.value, { dp: 2 })} \\times ${fmtTex(w.concrete.lambda, { dp: 2 })} \\times ${fmtTex(sqrt.value, { dp: 1 })} \\times ${fmtTex(acv.value)} = ${fmtTex(VncValue)}\\ \\text{kip}`,
+    substitution: `${fmtTex(ac.value, { dp: U.si ? 4 : 2 })} \\times ${fmtTex(w.concrete.lambda, { dp: 2 })} \\times ${fmtTex(sqrt.value, { dp: sqrtDp })} \\times ${fmtTex(acv.value)} = ${fmtTex(VncValue)}\\ ${U.forceTex}`,
     ref: aci("18.10.4.1", "18.10.4.1"),
     inputs: [ac, lambda, sqrt, acv],
+    note: U.si ? "MPa × mm² → N, reported in kN" : "psi × in² → lb, reported in kip",
   });
 
-  const fytPsi = ksiToPsi(w.grade.fy);
+  const fytCode = U.str(w.grade.fy);
   const fyt = input(
     `${NS}.fyt`,
     "f_yt",
     "specified yield strength of transverse reinforcement",
-    fytPsi,
-    "psi",
+    fytCode,
+    U.stress,
   );
-  const VnsValue = (rhoT.value * fytPsi * acv.value) / 1000;
+  const VnsValue = (rhoT.value * fytCode * acv.value) / 1000;
   const Vns = derive({
     id: `${NS}.Vns`,
     symbol: "V_ns",
     label: "horizontal reinforcement contribution to in-plane shear strength",
     value: VnsValue,
-    unit: "kip",
+    unit: U.force,
     formula: "V_{ns} = \\rho_t\\,f_{yt}\\,A_{cv}",
-    substitution: `${fmtTex(rhoT.value, { dp: 5 })} \\times ${fmtTex(fytPsi)} \\times ${fmtTex(acv.value)} = ${fmtTex(VnsValue)}\\ \\text{kip}`,
+    substitution: `${fmtTex(rhoT.value, { dp: 5 })} \\times ${fmtTex(fytCode)} \\times ${fmtTex(acv.value)} = ${fmtTex(VnsValue)}\\ ${U.forceTex}`,
     ref: aci("18.10.4.1", "18.10.4.1"),
     inputs: [rhoT, fyt, acv],
   });
@@ -341,15 +376,30 @@ export function checkSpecialShear(w: WallInput, demand: Demands): CheckResult {
     symbol: "V_n,calc",
     label: "nominal in-plane shear strength from Eq. (18.10.4.1)",
     value: VnCalcValue,
-    unit: "kip",
+    unit: U.force,
     formula: "V_n = \\left(\\alpha_c\\,\\lambda\\sqrt{f'_c} + \\rho_t f_{yt}\\right) A_{cv}",
-    substitution: `${fmtTex(VncValue)} + ${fmtTex(VnsValue)} = ${fmtTex(VnCalcValue)}\\ \\text{kip}`,
+    substitution: `${fmtTex(VncValue)} + ${fmtTex(VnsValue)} = ${fmtTex(VnCalcValue)}\\ ${U.forceTex}`,
     ref: aci("18.10.4.1", "18.10.4.1"),
     inputs: [Vnc, Vns],
   });
 
-  const cap8 = capNode(w, sqrt, acv, 8, "cap_8", "18.10.4.4", "A_cv", acv.value);
-  const cap10 = capNode(w, sqrt, acv, 10, "cap_10", "18.10.4.4", "A_cw", acv.value);
+  // 18.10.4.4 — 8√f'c·A_cv (psi, in²) / ACI 318M-19 18.10.4.4 0.66√f'c·A_cv
+  // (MPa, mm²); 18.10.4.5 — 10√f'c·A_cw / ACI 318M-19 18.10.4.5 0.83√f'c·A_cw.
+  const cap8Coeff = U.si ? 0.66 : 8;
+  const cap8CoeffTex = U.si ? "0.66" : "8";
+  const cap8 = capNode(w, U, sqrt, acv, cap8Coeff, cap8CoeffTex, "cap_8", "18.10.4.4", "A_cv", acv.value);
+  const cap10 = capNode(
+    w,
+    U,
+    sqrt,
+    acv,
+    U.si ? 0.83 : 10,
+    U.si ? "0.83" : "10",
+    "cap_10",
+    "18.10.4.4",
+    "A_cw",
+    acv.value,
+  );
 
   const VnValue = Math.min(VnCalcValue, cap8.value);
   const Vn = derive({
@@ -357,27 +407,27 @@ export function checkSpecialShear(w: WallInput, demand: Demands): CheckResult {
     symbol: "V_n",
     label: "nominal in-plane shear strength",
     value: VnValue,
-    unit: "kip",
-    formula: "V_n = \\min\\left(V_{n,calc},\\ 8\\sqrt{f'_c}A_{cv}\\right)",
-    substitution: `\\min(${fmtTex(VnCalcValue)},\\ ${fmtTex(cap8.value)}) = ${fmtTex(VnValue)}\\ \\text{kip}`,
+    unit: U.force,
+    formula: `V_n = \\min\\left(V_{n,calc},\\ ${cap8CoeffTex}\\sqrt{f'_c}A_{cv}\\right)`,
+    substitution: `\\min(${fmtTex(VnCalcValue)},\\ ${fmtTex(cap8.value)}) = ${fmtTex(VnValue)}\\ ${U.forceTex}`,
     ref: aci("18.10.4.4"),
     inputs: [VnCalc, cap8, cap10],
     note:
-      "18.10.4.4 sets two limits: 8√f'c·A_cv on all vertical wall segments resisting a common lateral force and 10√f'c·A_cw on any one segment. " +
-      "This engine models a single segment, so A_cw = A_cv and the 8√f'c limit always governs" +
+      `18.10.4.4 sets two limits: ${cap8CoeffTex}√f'c·A_cv on all vertical wall segments resisting a common lateral force and ${U.si ? "0.83" : "10"}√f'c·A_cw on any one segment. ` +
+      `This engine models a single segment, so A_cw = A_cv and the ${cap8CoeffTex}√f'c limit always governs` +
       (VnCalcValue > cap8.value ? "; it is reached here, so added horizontal reinforcement cannot raise V_n" : ""),
   });
 
-  const phi = seismicPhiShear(w, VnValue, Vn, cap10);
+  const phi = seismicPhiShear(w, U, VnValue, Vn, cap10);
   const phiVnValue = phi.node.value * VnValue;
   const phiVn = derive({
     id: `${NS}.phiVn`,
     symbol: "φV_n",
     label: "design in-plane shear strength",
     value: phiVnValue,
-    unit: "kip",
+    unit: U.force,
     formula: "\\phi V_n",
-    substitution: `${fmtTex(phi.node.value, { dp: 2 })} \\times ${fmtTex(VnValue)} = ${fmtTex(phiVnValue)}\\ \\text{kip}`,
+    substitution: `${fmtTex(phi.node.value, { dp: 2 })} \\times ${fmtTex(VnValue)} = ${fmtTex(phiVnValue)}\\ ${U.forceTex}`,
     ref: aci("18.10.4"),
     inputs: [phi.node, Vn],
   });
@@ -407,11 +457,19 @@ export function checkSpecialShear(w: WallInput, demand: Demands): CheckResult {
   });
 }
 
+/**
+ * The 18.10.4.4 / 18.10.4.5 upper limits on V_n, in the force unit of the
+ * edition. The coefficients are nonhomogeneous:
+ *   18.10.4.4 — 8√f'c·A_cv  (psi, in²) / ACI 318M-19 0.66√f'c·A_cv  (MPa, mm²)
+ *   18.10.4.5 — 10√f'c·A_cw (psi, in²) / ACI 318M-19 0.83√f'c·A_cw (MPa, mm²)
+ */
 function capNode(
   w: WallInput,
+  U: UnitScheme,
   sqrt: Traced,
   acv: Traced,
-  coeff: 8 | 10,
+  coeff: number,
+  coeffTex: string,
   key: string,
   ref: string,
   areaSymbol: string,
@@ -419,24 +477,24 @@ function capNode(
 ): Traced {
   const c = constant(
     `${NS}.${key}_coeff`,
-    String(coeff),
+    coeffTex,
     `upper-limit coefficient on V_n (${areaSymbol})`,
     coeff,
     "1",
     aci(ref),
-    coeff === 8
+    areaSymbol === "A_cv"
       ? "all vertical wall segments resisting a common lateral force"
       : "any one vertical wall segment; A_cw is the area of that segment",
   );
   const value = (coeff * sqrt.value * areaValue) / 1000;
   return derive({
     id: `${NS}.${key}`,
-    symbol: `${coeff}√f'_c·${areaSymbol}`,
+    symbol: `${coeffTex}√f'_c·${areaSymbol}`,
     label: "upper limit on nominal in-plane shear strength",
     value,
-    unit: "kip",
-    formula: `${coeff}\\sqrt{f'_c}\\,${areaSymbol === "A_cv" ? "A_{cv}" : "A_{cw}"}`,
-    substitution: `${coeff} \\times ${fmtTex(sqrt.value, { dp: 1 })} \\times ${fmtTex(areaValue)} = ${fmtTex(value)}\\ \\text{kip}`,
+    unit: U.force,
+    formula: `${coeffTex}\\sqrt{f'_c}\\,${areaSymbol === "A_cv" ? "A_{cv}" : "A_{cw}"}`,
+    substitution: `${coeffTex} \\times ${fmtTex(sqrt.value, { dp: U.si ? 3 : 1 })} \\times ${fmtTex(areaValue)} = ${fmtTex(value)}\\ ${U.forceTex}`,
     ref: aci(ref),
     inputs: [c, sqrt, acv],
     note: areaSymbol === "A_cw" ? "single-segment wall: A_cw = A_cv" : undefined,
@@ -469,6 +527,7 @@ interface PhiSelection {
  */
 function seismicPhiShear(
   w: WallInput,
+  U: UnitScheme,
   VnValue: number,
   Vn: Traced,
   cap10: Traced,
@@ -517,11 +576,14 @@ function seismicPhiShear(
   const PuMax = w.demands.length > 0 ? Math.max(...w.demands.map((d) => d.Pu)) : 0;
   let MnValue: number;
   try {
+    // `cAt` and `SectionPoint` both speak the wall's reporting system already,
+    // so they compose directly and must not be converted again; the whole φ
+    // decision below is then done in that system (kip-ft/in or kN·m/mm).
     MnValue = sectionAt(w, cAt(w, PuMax)).Mn;
   } catch {
     const node = phiNode(
       0.75,
-      `M_n\\ \\text{is undefined at}\\ P_u = ${fmtTex(PuMax)}\\ \\text{kip} \\Rightarrow \\phi = 0.75`,
+      `M_n\\ \\text{is undefined at}\\ P_u = ${fmtTex(U.frc(PuMax))}\\ ${U.forceTex} \\Rightarrow \\phi = 0.75`,
       [Vn],
       "21.2.4.1 could not be evaluated: P_u,max lies outside the nominal axial range of the section",
       "warning",
@@ -533,8 +595,8 @@ function seismicPhiShear(
     `${NS}.Pu_max`,
     "P_u,max",
     "largest factored axial force among the E load combinations",
-    PuMax,
-    "kip",
+    U.frc(PuMax),
+    U.force,
     "21.2.4.1: M_n is maximized over the factored axial forces of the E combinations",
   );
   const Mn = derive({
@@ -542,27 +604,32 @@ function seismicPhiShear(
     symbol: "M_n",
     label: "nominal flexural strength at P_u,max",
     value: MnValue,
-    unit: "kip-ft",
+    unit: U.moment,
     formula: "M_n\\ \\text{at}\\ P_n(c) = P_{u,max}",
-    substitution: `M_n = ${fmtTex(MnValue)}\\ \\text{kip-ft at } P_u = ${fmtTex(PuMax)}\\ \\text{kip}`,
+    substitution: `M_n = ${fmtTex(MnValue)}\\ ${U.si ? "\\text{kN·m}" : "\\text{kip-ft}"}\\text{ at } P_u = ${fmtTex(U.frc(PuMax))}\\ ${U.forceTex}`,
     ref: aci("21.2.4.1"),
     inputs: [PuMaxNode, fcKsi(w), lwInput(w), hInput(w), fyInput(w), AstInput(w)],
   });
 
-  const hsxNode = input(`${NS}.hsx`, "h_sx", "first-story height", hsx, "in");
-  const vAtMnValue = (2 * kipFtToKipIn(MnValue)) / hsx;
+  const hsxNode = input(`${NS}.hsx`, "h_sx", "first-story height", U.len(hsx), U.length);
+  // 21.2.4.1 is dimensionless, but 2M_n/h_sx divides a moment by a length, so
+  // the arithmetic is done in the local system: kip-ft → kip-in. against h_sx in
+  // inches, or kN·m → kN·mm (×1000) against h_sx in mm, either way landing on
+  // the system's force unit.
+  const MnLocal = U.si ? MnValue * 1000 : kipFtToKipIn(MnValue);
+  const vAtMnValue = (2 * MnLocal) / hsxNode.value;
   const vAtMn = derive({
     id: `${NS}.V_at_Mn`,
     symbol: "V@M_n",
     label: "shear corresponding to development of the nominal moment strength",
     value: vAtMnValue,
-    unit: "kip",
+    unit: U.force,
     formula: "V@M_n = \\dfrac{2 M_n}{h_{sx}}",
-    substitution: `\\dfrac{2 \\times ${fmtTex(kipFtToKipIn(MnValue))}}{${fmtTex(hsx)}} = ${fmtTex(vAtMnValue)}\\ \\text{kip}`,
+    substitution: `\\dfrac{2 \\times ${fmtTex(MnLocal)}}{${fmtTex(hsxNode.value)}} = ${fmtTex(vAtMnValue)}\\ ${U.forceTex}`,
     ref: aci("21.2.4.1"),
     inputs: [Mn, hsxNode],
     note:
-      "MNL-17(21) Ex. 2 convention: the first-story wall develops M_n over the story height h_sx, so the story shear is 2M_n/h_sx (M_n in kip-ft is converted to kip-in.). " +
+      `MNL-17(21) Ex. 2 convention: the first-story wall develops M_n over the story height h_sx, so the story shear is 2M_n/h_sx (M_n in ${U.si ? "kN·m is converted to kN·mm" : "kip-ft is converted to kip-in."}). ` +
       "The handbook's printed 4650 kip is reproduced exactly by putting the *design* moment φM_n read off the interaction diagram in place of M_n; 21.2.4.1 says nominal, which is what is used here and is the more conservative of the two",
   });
 
@@ -570,13 +637,15 @@ function seismicPhiShear(
   // 18.10.4.4 ceiling, so no amount of horizontal reinforcement lets the wall
   // reach M_n in shear. Informational — the governing test is V_n < V@M_n.
   const overCap = vAtMnValue > cap10.value;
+  // 10√f'c·A_cw (psi, in²) / ACI 318M-19 18.10.4.5 0.83√f'c·A_cw (MPa, mm²).
+  const cap10CoeffTex = U.si ? "0.83" : "10";
   const capCompare = derive({
     id: `${NS}.V_at_Mn_vs_cap`,
-    symbol: "V@M_n / 10√f'_c·A_cw",
+    symbol: `V@M_n / ${cap10CoeffTex}√f'_c·A_cw`,
     label: "shear at M_n against the absolute 18.10.4.4 ceiling",
     value: cap10.value > 0 ? vAtMnValue / cap10.value : Number.POSITIVE_INFINITY,
     unit: "1",
-    formula: "V@M_n\\ \\text{vs}\\ 10\\sqrt{f'_c}A_{cw}",
+    formula: `V@M_n\\ \\text{vs}\\ ${cap10CoeffTex}\\sqrt{f'_c}A_{cw}`,
     substitution: `${fmtTex(vAtMnValue)} ${overCap ? ">" : "\\le"} ${fmtTex(cap10.value)} = ${fmtTex(cap10.value > 0 ? vAtMnValue / cap10.value : Infinity, { dp: 3 })}`,
     ref: aci("18.10.4.4"),
     inputs: [vAtMn, cap10],

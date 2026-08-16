@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { notify } from "@/components/ui/sonner";
 import { DISCLAIMER_SENTENCE } from "@/lib/copy";
+import { viewOf, type UnitsView } from "@/lib/units-view";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -422,11 +423,12 @@ function CheckTrace({ check, scope }: { check: CheckResult; scope: string }) {
 // report
 // ---------------------------------------------------------------------------
 
-function demandSummary(demand: Demands): string {
+/** Demands are stored canonical in both editions, so this one line converts. */
+function demandSummary(demand: Demands, U: UnitsView): string {
   return [
-    `Pu ${fmt(demand.Pu)} kip`,
-    `Mu ${fmt(demand.Mu)} kip-ft`,
-    `Vu ${fmt(demand.Vu)} kip`,
+    `Pu ${fmt(U.force(demand.Pu))} ${U.forceUnit}`,
+    `Mu ${fmt(U.moment(demand.Mu))} ${U.momentUnit}`,
+    `Vu ${fmt(U.force(demand.Vu))} ${U.forceUnit}`,
   ].join(" · ");
 }
 
@@ -441,30 +443,35 @@ const STATUS_WORD: Record<CheckStatus, string> = {
 function reportMarkdown(input: WallInput, report: WallReport): string {
   const { geometry, concrete, grade, vertical, horizontal, seismic, sbe } = input;
   const special = input.system === "special";
+  const U = viewOf(input);
+  const L = U.lengthUnit;
+  // f'c is quoted in the unit its table is written in (psi | MPa); fy keeps the
+  // ksi it is specified in, and only SI moves it to MPa.
+  const fy = U.si ? `${fmt(U.stress(grade.fy))} MPa` : `${fmt(grade.fy)} ksi`;
   const lines: string[] = [
     "# shear0 — calculation report",
     "",
-    `ACI 318-19 · ${special ? "special structural wall (§18.10)" : "ordinary structural wall"} · **${STATUS_WORD[report.status]}**`,
+    `${U.si ? "ACI 318M-19" : "ACI 318-19"} · ${special ? "special structural wall (§18.10)" : "ordinary structural wall"} · **${STATUS_WORD[report.status]}**`,
     "",
-    `- geometry: ℓw = ${fmt(geometry.lw)} in, h = ${fmt(geometry.h)} in, hw = ${fmt(geometry.hw)} in`,
-    `- materials: f'c = ${fmt(concrete.fc * 1000)} psi, λ = ${fmt(concrete.lambda, { dp: 2 })}, fy = ${fmt(grade.fy)} ksi`,
-    `- vertical: #${vertical.bar} @ ${fmt(vertical.spacing)} in, ${vertical.curtains} curtain(s)`,
-    `- horizontal: #${horizontal.bar} @ ${fmt(horizontal.spacing)} in, ${horizontal.curtains} curtain(s)`,
+    `- geometry: ℓw = ${fmt(U.len(geometry.lw))} ${L}, h = ${fmt(U.len(geometry.h))} ${L}, hw = ${fmt(U.len(geometry.hw))} ${L}`,
+    `- materials: f'c = ${fmt(U.stress(concrete.fc))} ${U.stressUnit}, λ = ${fmt(concrete.lambda, { dp: 2 })}, fy = ${fy}`,
+    `- vertical: #${vertical.bar} @ ${fmt(U.len(vertical.spacing))} ${L}, ${vertical.curtains} curtain(s)`,
+    `- horizontal: #${horizontal.bar} @ ${fmt(U.len(horizontal.spacing))} ${L}, ${horizontal.curtains} curtain(s)`,
   ];
   if (special && seismic !== undefined) {
     lines.push(
       `- seismic: SDC ${seismic.sdc}` +
-        (seismic.deltaE === undefined ? "" : `, δe = ${fmt(seismic.deltaE, { dp: 2 })} in`) +
+        (seismic.deltaE === undefined ? "" : `, δe = ${fmt(U.len(seismic.deltaE), { dp: 2 })} ${L}`) +
         (seismic.Cd === undefined ? "" : `, Cd = ${fmt(seismic.Cd, { dp: 2 })}`) +
         (seismic.ns === undefined ? "" : `, ns = ${fmt(seismic.ns, { dp: 0 })}`) +
-        (seismic.hsx === undefined ? "" : `, hsx = ${fmt(seismic.hsx)} in`),
+        (seismic.hsx === undefined ? "" : `, hsx = ${fmt(U.len(seismic.hsx))} ${L}`),
     );
   }
   if (special) {
     lines.push(
       sbe === undefined
         ? "- boundary element: none provided"
-        : `- boundary element: b = ${fmt(sbe.width)} in × ℓbe = ${fmt(sbe.length)} in, (${fmt(sbe.longCount, { dp: 0 })}) #${sbe.longBar}, #${sbe.tieBar} hoops @ ${fmt(sbe.tieSpacing)} in, ${fmt(sbe.tieLegsAcrossWidth, { dp: 0 })} legs ⊥ bc1`,
+        : `- boundary element: b = ${fmt(U.len(sbe.width))} ${L} × ℓbe = ${fmt(U.len(sbe.length))} ${L}, (${fmt(sbe.longCount, { dp: 0 })}) #${sbe.longBar}, #${sbe.tieBar} hoops @ ${fmt(U.len(sbe.tieSpacing))} ${L}, ${fmt(sbe.tieLegsAcrossWidth, { dp: 0 })} legs ⊥ bc1`,
     );
   }
   lines.push(
@@ -479,7 +486,7 @@ function reportMarkdown(input: WallInput, report: WallReport): string {
   }
   for (const group of report.perDemand) {
     lines.push(
-      `**load case: ${group.demand.label ?? group.demand.id} — ${demandSummary(group.demand)}**`,
+      `**load case: ${group.demand.label ?? group.demand.id} — ${demandSummary(group.demand, U)}**`,
       "",
     );
     for (const check of group.checks) lines.push(traceToMarkdown(check), "");
@@ -494,7 +501,11 @@ export function TraceReport({
   input: WallInput;
   report: WallReport;
 }) {
-  const markdown = useCallback(() => reportMarkdown(input, report), [input, report]);
+  const U = viewOf(input);
+  // Plain closure, not a `useCallback`: the whole report is only ever built
+  // inside the copy handler, so its identity buys nothing, and hand-memoizing
+  // it here is what made the compiler bail out of optimizing this component.
+  const markdown = () => reportMarkdown(input, report);
 
   return (
     <Card size="sm" className="gap-2">
@@ -518,13 +529,13 @@ export function TraceReport({
           <div key={group.demand.id}>
             <GroupLabel>
               {group.demand.label ?? group.demand.id}
-              <span className="ml-2 font-normal">{demandSummary(group.demand)}</span>
+              <span className="ml-2 font-normal">{demandSummary(group.demand, U)}</span>
             </GroupLabel>
             {group.checks.map((check) => (
               <CheckTrace
                 key={check.id}
                 check={check}
-                scope={`${group.demand.label ?? group.demand.id} · ${demandSummary(group.demand)}`}
+                scope={`${group.demand.label ?? group.demand.id} · ${demandSummary(group.demand, U)}`}
               />
             ))}
           </div>

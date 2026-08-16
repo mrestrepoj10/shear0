@@ -60,8 +60,12 @@ v0. What works today:
 Deferred on purpose (tracked in `PLAN.md` §1, not planned): coupling beams (18.10.7), wall piers
 (18.10.8), walls with openings or multiple segments, flanged (T/L/C/I) sections, multi-story
 envelopes along height, load-combination generation, the slender out-of-plane method (11.8),
-shear friction (22.9), SI-first workflows (SI display conversion only), prestressed and precast
-walls.
+shear friction (22.9), prestressed and precast walls.
+
+Both editions of the code are supported: the unit toggle on /design switches the whole engine
+between ACI 318-19 (in-lb, psi) and ACI 318M-19 (SI, MPa) — the metric coefficients are the ones
+the metric Code prints (0.17, 0.66, 4700), not the in-lb ones converted, so a metric calc sheet is
+a metric calculation rather than a translated one. Bar sizes stay imperial (#3–#11) in both.
 
 ## quick start
 

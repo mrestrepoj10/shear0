@@ -2,7 +2,8 @@ import type { BarSize, Concrete, RebarGrade } from "./materials";
 import { BARS } from "./materials";
 import { aci, derive, input } from "./trace";
 import type { Traced } from "./trace";
-import { fmtTex } from "./units";
+import { fmtTex, unitScheme } from "./units";
+import type { UnitScheme, UnitSystem } from "./units";
 
 export interface DistributedLayer {
   bar: BarSize;
@@ -122,6 +123,27 @@ export interface WallInput {
    *   18.10.6.2") and keep φ = 0.75 for walls on the displacement-based path.
    */
   phiSeismicReading?: "handbook-conservative" | "exempt-18.10.4.6";
+  /**
+   * Which edition of the code the checks evaluate and the traces speak,
+   * `"in-lb"` (ACI 318-19, psi) by default.
+   *
+   * This does **not** change how the input above is expressed — every field
+   * stays in the canonical kip/in/ksi system. It selects the coefficient set at
+   * each formula site (0.17 vs 2, 0.66 vs 8, 4700 vs 57000, ...) and the units
+   * the resulting trace nodes carry, so an SI report is the ACI 318M equation
+   * evaluated in MPa/mm/kN rather than an in-lb answer with converted numbers.
+   */
+  units?: UnitSystem;
+}
+
+/** The unit system this wall's checks evaluate in — `"in-lb"` unless set. */
+export function unitsOf(w: WallInput): UnitSystem {
+  return w.units ?? "in-lb";
+}
+
+/** The per-system vocabulary every formula site in this wall's checks reads. */
+export function schemeOf(w: WallInput): UnitScheme {
+  return unitScheme(unitsOf(w));
 }
 
 // Geometry leaves are memoized per WallInput (see materials.ts) so checks that
@@ -136,7 +158,10 @@ function geometryInput(w: WallInput, id: string, symbol: string, label: string, 
   }
   let node = byId.get(id);
   if (node === undefined) {
-    node = input(id, symbol, label, value, "in");
+    // Geometry is stored in inches; the leaf is traced in the reporting length
+    // unit so an SI trace reads in mm all the way down to the inputs.
+    const U = schemeOf(w);
+    node = input(id, symbol, label, U.len(value), U.length);
     byId.set(id, node);
   }
   return node;
@@ -190,17 +215,18 @@ export function huInput(w: WallInput): Traced {
 
 /** Gross area of concrete section bounded by web thickness and length, 11.5.4. */
 export function Acv(w: WallInput): Traced {
+  const U = schemeOf(w);
   const lw = lwInput(w);
   const h = hInput(w);
-  const value = w.geometry.h * w.geometry.lw;
+  const value = U.ar(w.geometry.h * w.geometry.lw);
   return derive({
     id: "wall.Acv",
     symbol: "A_cv",
     label: "gross area of concrete section resisting shear",
     value,
-    unit: "in2",
+    unit: U.area,
     formula: "A_{cv} = h\\,\\ell_w",
-    substitution: `A_{cv} = ${fmtTex(w.geometry.h)} \\times ${fmtTex(w.geometry.lw)} = ${fmtTex(value)}\\ \\text{in}^2`,
+    substitution: `A_{cv} = ${fmtTex(h.value)} \\times ${fmtTex(lw.value)} = ${fmtTex(value)}\\ ${U.areaTex}`,
     ref: aci("11.5.4 / R11.5.4.2"),
     inputs: [h, lw],
   });
@@ -208,17 +234,18 @@ export function Acv(w: WallInput): Traced {
 
 /** Gross section area — rectangular wall only (no flanges, no boundary thickening). */
 export function Ag(w: WallInput): Traced {
+  const U = schemeOf(w);
   const lw = lwInput(w);
   const h = hInput(w);
-  const value = w.geometry.h * w.geometry.lw;
+  const value = U.ar(w.geometry.h * w.geometry.lw);
   return derive({
     id: "wall.Ag",
     symbol: "A_g",
     label: "gross concrete section area",
     value,
-    unit: "in2",
+    unit: U.area,
     formula: "A_g = h\\,\\ell_w",
-    substitution: `A_g = ${fmtTex(w.geometry.h)} \\times ${fmtTex(w.geometry.lw)} = ${fmtTex(value)}\\ \\text{in}^2`,
+    substitution: `A_g = ${fmtTex(h.value)} \\times ${fmtTex(lw.value)} = ${fmtTex(value)}\\ ${U.areaTex}`,
     inputs: [h, lw],
   });
 }
@@ -254,7 +281,7 @@ export function hwOverLw(w: WallInput): Traced {
       value,
       unit: "1",
       formula: "h_w/\\ell_w",
-      substitution: `h_w/\\ell_w = ${fmtTex(w.geometry.hw)} / ${fmtTex(w.geometry.lw)} = ${fmtTex(value, { dp: 3 })}`,
+      substitution: `h_w/\\ell_w = ${fmtTex(hw.value)} / ${fmtTex(lw.value)} = ${fmtTex(value, { dp: 3 })}`,
       inputs: [hw, lw],
     });
   });
@@ -273,7 +300,7 @@ export function hwcsOverLw(w: WallInput): Traced {
       value,
       unit: "1",
       formula: "h_{wcs}/\\ell_w",
-      substitution: `h_{wcs}/\\ell_w = ${fmtTex(hwcsValue(w))} / ${fmtTex(w.geometry.lw)} = ${fmtTex(value, { dp: 3 })}`,
+      substitution: `h_{wcs}/\\ell_w = ${fmtTex(hwcs.value)} / ${fmtTex(lw.value)} = ${fmtTex(value, { dp: 3 })}`,
       ref: aci("18.10.3.1"),
       inputs: [hwcs, lw],
     });

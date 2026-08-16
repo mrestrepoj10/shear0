@@ -35,6 +35,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge, num, statusText } from "@/components/design/status";
 import { normalizedStatus } from "@/components/design/results-summary";
+import { viewOf, type UnitsView } from "@/lib/units-view";
 import { decodeWallInput, encodeWallInput } from "@/lib/wall-codec";
 import { cn } from "@/lib/utils";
 
@@ -63,8 +64,13 @@ const OPTION_DASH: Record<(typeof OPTION_LETTERS)[number], string> = {
   C: "8 2 2 2",
 };
 
-/** Steel weight per vertical foot of wall, lb/ft: As (in²) × 490 pcf / 144. */
-const STEEL_LB_PER_FT_PER_IN2 = 490 / 144;
+/**
+ * Steel weight per vertical foot of wall, kip/ft: As (in²) × 490 pcf / 144 /
+ * 1000. Held in kip rather than lb so the SI column can be reached through the
+ * engine's own kip → kN conversion; the 490 pcf density is a material property,
+ * not a unit conversion, and is the same steel in either edition.
+ */
+const STEEL_KIP_PER_FT_PER_IN2 = 490 / 144 / 1000;
 
 interface EvaluatedOption {
   letter: string;
@@ -160,6 +166,7 @@ export const DesignOptions = memo(function DesignOptions({
 }) {
   const pins = useSyncExternalStore(subscribePins, readPins, () => EMPTY_PINS);
   const persist = writePins;
+  const U = viewOf(input);
 
   const currentEncoded = useMemo(() => encodeWallInput(input), [input]);
 
@@ -182,13 +189,24 @@ export const DesignOptions = memo(function DesignOptions({
 
   const overlay = useMemo(() => {
     const series: XySeries[] = [];
+    // `designCurve` reports in each wall's *own* system, and a pinned option
+    // may have been saved in the other one. Everything is replotted on the
+    // current view's axes — through the option's own view, so the round trip
+    // is the engine's conversion in both directions and never a factor here.
+    const onCurrentAxes = (option: WallInput) => {
+      const V = viewOf(option);
+      return designCurve(option, { points: CURVE_POINTS }).map((p) => ({
+        x: U.moment(V.toKipFt(p.phiMn)),
+        y: U.force(V.toKip(p.phiPn)),
+      }));
+    };
     try {
       series.push({
         id: "current",
         label: "current",
         token: "line",
         width: 2,
-        points: designCurve(input, { points: CURVE_POINTS }).map((p) => ({ x: p.phiMn, y: p.phiPn })),
+        points: onCurrentAxes(input),
       });
     } catch {
       return [];
@@ -201,17 +219,14 @@ export const DesignOptions = memo(function DesignOptions({
           token: "muted",
           dash: OPTION_DASH[option.letter as keyof typeof OPTION_DASH] ?? "4 3",
           width: 1.4,
-          points: designCurve(option.input, { points: CURVE_POINTS }).map((p) => ({
-            x: p.phiMn,
-            y: p.phiPn,
-          })),
+          points: onCurrentAxes(option.input),
         });
       } catch {
         // an option the engine cannot curve still shows in the table
       }
     }
     return series;
-  }, [input, options]);
+  }, [input, options, U]);
 
   // Union of check ids, in the order the current design reports them.
   const rows = useMemo(() => {
@@ -265,11 +280,11 @@ export const DesignOptions = memo(function DesignOptions({
               ariaDescription="The current design surface is solid; each pinned option has its own dash pattern, named in the legend."
               series={overlay}
               height={240}
-              x={{ label: "M  (kip-ft)", format: (v) => fmt(v, { dp: 0 }), include: [0] }}
-              y={{ label: "P  (kip)", format: (v) => fmt(v, { dp: 0 }), include: [0] }}
+              x={{ label: `M  (${U.momentUnit})`, format: (v) => fmt(v, { dp: 0 }), include: [0] }}
+              y={{ label: `P  (${U.forceUnit})`, format: (v) => fmt(v, { dp: 0 }), include: [0] }}
               focus="nearest"
               tooltip={(point) =>
-                `${point.label}\nφMn ${num(point.x)} kip-ft · φPn ${num(point.y)} kip`
+                `${point.label}\nφMn ${num(point.x)} ${U.momentUnit} · φPn ${num(point.y)} ${U.forceUnit}`
               }
             />
 
@@ -333,11 +348,11 @@ export const DesignOptions = memo(function DesignOptions({
                   })}
                   <tr className="border-t border-border">
                     <th scope="row" className="py-1 pr-3 text-left font-normal text-muted-foreground">
-                      vertical steel (lb/ft)
+                      vertical steel ({U.si ? "kN/m" : "lb/ft"})
                     </th>
-                    <SteelCell input={input} />
+                    <SteelCell input={input} U={U} />
                     {options.map((option) => (
-                      <SteelCell key={option.letter} input={option.input} />
+                      <SteelCell key={option.letter} input={option.input} U={U} />
                     ))}
                   </tr>
                   <tr className="border-t border-border/60">
@@ -400,11 +415,27 @@ function DashSwatch({ dash }: { dash: string | null }) {
   );
 }
 
-function SteelCell({ input }: { input: WallInput }) {
+/**
+ * Vertical steel spend, in the *current* view's unit even for a pinned option
+ * that was saved in the other system — the column has one header, so it must
+ * have one unit.
+ *
+ * lb/ft in-lb, kN/m in SI: kN/m is the honest metric reading of a weight per
+ * length. kg/m would need a mass density the trace has no `Unit` tag for, and
+ * inventing 7850 here would be exactly the hardcoded factor this feature
+ * exists to avoid. The kip → kN step is the engine's; the per-foot → per-metre
+ * step is the display length of one foot, so no factor is written down either.
+ */
+function steelText(input: WallInput, U: UnitsView): string {
+  const kipPerFt = totalVerticalAs(input) * STEEL_KIP_PER_FT_PER_IN2;
+  if (!U.si) return fmt(kipPerFt * 1000, { dp: 1 });
+  return fmt((U.scheme.frc(kipPerFt) * 1000) / U.scheme.len(12), { dp: 2 });
+}
+
+function SteelCell({ input, U }: { input: WallInput; U: UnitsView }) {
   let text = "—";
   try {
-    const As = totalVerticalAs(input);
-    text = `${fmt(As * STEEL_LB_PER_FT_PER_IN2, { dp: 1 })}`;
+    text = steelText(input, U);
   } catch {
     // leave the dash
   }

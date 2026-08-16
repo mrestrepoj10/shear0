@@ -19,6 +19,7 @@ import {
   type Demands,
   type DistributedLayer,
   type SeismicParams,
+  type UnitSystem,
   type WallInput,
 } from "@shear0/engine";
 import { Plus, RotateCcw, X } from "lucide-react";
@@ -41,7 +42,17 @@ import {
 } from "@/components/design/fields";
 import { encodeWallInput } from "@/lib/url-state";
 import {
+  UNIT_SYSTEM_LABELS,
+  UNIT_SYSTEM_ORDER,
+  UNIT_SYSTEM_SHORT,
+  viewOf,
+  type UnitsView,
+} from "@/lib/units-view";
+import {
   BAR_SIZES,
+  GRADE_IDS,
+  GRADE_LABELS,
+  gradeIdOf,
   PRESETS,
   PRESET_LABELS,
   PRESET_ORDER,
@@ -49,6 +60,7 @@ import {
   useSelection,
   useWallDispatch,
   useWallInput,
+  type GradeId,
   type PresetId,
   type WallAction,
 } from "@/lib/wall-state";
@@ -78,10 +90,14 @@ const K_HINTS: Record<"0.8" | "1" | "2", string> = {
   "2": "11.5.3.1 · cantilever, free top",
 };
 
-const GRADE_OPTIONS: SelectOption<"60" | "80">[] = [
-  { value: "60", label: "Grade 60" },
-  { value: "80", label: "Grade 80" },
-];
+/**
+ * The grades of the edition in force. ACI 318M-19's Grade 420/550 are not
+ * Grade 60/80 relabelled — they carry the metric edition's own E_s and ε_ty —
+ * so the select offers one pair or the other, never a mix.
+ */
+function gradeOptions(system: UnitSystem): SelectOption<GradeId>[] {
+  return GRADE_IDS[system].map((id) => ({ value: id, label: GRADE_LABELS[id] }));
+}
 
 const WALL_TYPE_OPTIONS: SelectOption<"bearing" | "nonbearing">[] = [
   { value: "bearing", label: "bearing" },
@@ -155,32 +171,54 @@ function SectionCard({
 
 function GeometryCard({ input, dispatch }: PanelProps) {
   const { geometry } = input;
+  const U = viewOf(input);
+  // The field speaks mm or inches; the reducer only ever speaks inches.
   const setLength = (field: "lw" | "h" | "hw" | "lu" | "cover") => (value: number | undefined) => {
-    if (value !== undefined) dispatch({ type: "setGeometry", field, value });
+    if (value !== undefined) dispatch({ type: "setGeometry", field, value: U.toIn(value) });
   };
 
   return (
     <SectionCard title="geometry">
       <FieldGroup>
         <FieldRow label="wall length ℓw">
-          <NumberField value={geometry.lw} onValueChange={setLength("lw")} unit="in" min={1} />
+          <NumberField
+            value={U.len(geometry.lw)}
+            onValueChange={setLength("lw")}
+            unit={U.lengthUnit}
+            min={U.len(1)}
+          />
         </FieldRow>
         <FieldRow label="thickness h">
-          <NumberField value={geometry.h} onValueChange={setLength("h")} unit="in" min={1} />
+          <NumberField
+            value={U.len(geometry.h)}
+            onValueChange={setLength("h")}
+            unit={U.lengthUnit}
+            min={U.len(1)}
+          />
         </FieldRow>
         <FieldRow label="wall height hw">
-          <NumberField value={geometry.hw} onValueChange={setLength("hw")} unit="in" min={1} />
+          <NumberField
+            value={U.len(geometry.hw)}
+            onValueChange={setLength("hw")}
+            unit={U.lengthUnit}
+            min={U.len(1)}
+          />
         </FieldRow>
         <FieldRow label="unsupported height ℓu">
-          <NumberField value={geometry.lu} onValueChange={setLength("lu")} unit="in" min={1} />
+          <NumberField
+            value={U.len(geometry.lu)}
+            onValueChange={setLength("lu")}
+            unit={U.lengthUnit}
+            min={U.len(1)}
+          />
         </FieldRow>
         <FieldRow label="clear cover">
           <NumberField
-            value={geometry.cover}
+            value={U.len(geometry.cover)}
             onValueChange={setLength("cover")}
-            unit="in"
+            unit={U.lengthUnit}
             min={0}
-            step={0.25}
+            step={U.lengthStep(0.25)}
           />
         </FieldRow>
         <FieldRow
@@ -205,28 +243,31 @@ function GeometryCard({ input, dispatch }: PanelProps) {
       </FieldGroup>
       <div className="mt-1 flex flex-col gap-1 border-t border-border pt-2">
         <DerivedRow label="hw/ℓw" value={fmt(hwOverLw(input).value, { dp: 3 })} />
-        <DerivedRow label="Acv" value={`${fmt(Acv(input).value)} in²`} />
+        <DerivedRow label="Acv" value={`${fmt(Acv(input).value)} ${U.areaUnit}`} />
       </div>
     </SectionCard>
   );
 }
 
 function MaterialsCard({ input, dispatch }: PanelProps) {
-  const fcPsi = input.concrete.fc * 1000;
+  const U = viewOf(input);
+  // f'c is stored in ksi and shown in the unit the Code equations are written
+  // in — psi under ACI 318-19, MPa under ACI 318M-19.
+  const fcShown = U.stress(input.concrete.fc);
   return (
     <SectionCard title="materials">
       <FieldGroup>
         <FieldRow label="concrete f'c">
           <NumberField
-            value={fcPsi}
+            value={fcShown}
             onValueChange={(value) => {
               if (value === undefined || value <= 0) return false;
-              dispatch({ type: "setConcrete", patch: { fcPsi: value } });
+              dispatch({ type: "setConcrete", patch: { fcKsi: U.toKsi(value) } });
               return true;
             }}
-            unit="psi"
-            min={1}
-            step={500}
+            unit={U.stressUnit}
+            min={U.si ? 1 : 100}
+            step={U.si ? 5 : 500}
           />
         </FieldRow>
         <FieldRow label="lightweight factor λ" hint="19.2.4">
@@ -243,16 +284,19 @@ function MaterialsCard({ input, dispatch }: PanelProps) {
         </FieldRow>
         <FieldRow label="reinforcement grade" hint="20.2.2">
           <SelectField
-            value={input.grade.fy === 80 ? "80" : "60"}
-            options={GRADE_OPTIONS}
-            onValueChange={(value) => dispatch({ type: "setGrade", fy: value === "80" ? 80 : 60 })}
+            value={gradeIdOf(input.grade)}
+            options={gradeOptions(U.system)}
+            onValueChange={(id) => dispatch({ type: "setGrade", id })}
           />
         </FieldRow>
       </FieldGroup>
       <div className="mt-1 flex flex-col gap-1 border-t border-border pt-2">
-        <DerivedRow label="β₁" value={fmt(beta1(input.concrete).value, { dp: 3 })} />
-        <DerivedRow label="Ec" value={`${fmt(Ec(input.concrete).value)} psi`} />
-        <DerivedRow label="fy" value={`${fmt(input.grade.fy)} ksi`} />
+        <DerivedRow label="β₁" value={fmt(beta1(input.concrete, U.scheme).value, { dp: 3 })} />
+        <DerivedRow
+          label="Ec"
+          value={`${fmt(Ec(input.concrete, U.scheme).value)} ${U.stressUnit}`}
+        />
+        <DerivedRow label="fy" value={`${fmt(U.stress(input.grade.fy))} ${U.stressUnit}`} />
       </div>
     </SectionCard>
   );
@@ -269,6 +313,7 @@ function MaterialsCard({ input, dispatch }: PanelProps) {
  */
 function ReinforcementCard({ input, dispatch }: PanelProps) {
   const { endZone } = input;
+  const U = viewOf(input);
   const curtains = Math.min(input.vertical.curtains, input.horizontal.curtains);
   const selection = useSelection();
   const lit =
@@ -322,14 +367,18 @@ function ReinforcementCard({ input, dispatch }: PanelProps) {
           </FieldRow>
           <FieldRow label="vertical spacing">
             <NumberField
-              value={input.vertical.spacing}
+              value={U.len(input.vertical.spacing)}
               onValueChange={(value) => {
                 if (value === undefined || value <= 0) return false;
-                dispatch({ type: "setLayer", layer: "vertical", patch: { spacing: value } });
+                dispatch({
+                  type: "setLayer",
+                  layer: "vertical",
+                  patch: { spacing: U.toIn(value) },
+                });
                 return true;
               }}
-              unit="in"
-              min={1}
+              unit={U.lengthUnit}
+              min={U.len(1)}
             />
           </FieldRow>
         </div>
@@ -344,14 +393,18 @@ function ReinforcementCard({ input, dispatch }: PanelProps) {
         </FieldRow>
         <FieldRow label="horizontal spacing">
           <NumberField
-            value={input.horizontal.spacing}
+            value={U.len(input.horizontal.spacing)}
             onValueChange={(value) => {
               if (value === undefined || value <= 0) return false;
-              dispatch({ type: "setLayer", layer: "horizontal", patch: { spacing: value } });
+              dispatch({
+                type: "setLayer",
+                layer: "horizontal",
+                patch: { spacing: U.toIn(value) },
+              });
               return true;
             }}
-            unit="in"
-            min={1}
+            unit={U.lengthUnit}
+            min={U.len(1)}
           />
         </FieldRow>
       </FieldGroup>
@@ -393,26 +446,26 @@ function ReinforcementCard({ input, dispatch }: PanelProps) {
           </FieldRow>
           <FieldRow label="end to first bar">
             <NumberField
-              value={endZone.distanceToFirst}
+              value={U.len(endZone.distanceToFirst)}
               onValueChange={(value) => {
                 if (value !== undefined) {
-                  dispatch({ type: "setEndZone", patch: { distanceToFirst: value } });
+                  dispatch({ type: "setEndZone", patch: { distanceToFirst: U.toIn(value) } });
                 }
               }}
-              unit="in"
+              unit={U.lengthUnit}
               min={0}
             />
           </FieldRow>
           <FieldRow label="end-zone spacing">
             <NumberField
-              value={endZone.spacing}
+              value={U.len(endZone.spacing)}
               onValueChange={(value) => {
                 if (value === undefined || value <= 0) return false;
-                dispatch({ type: "setEndZone", patch: { spacing: value } });
+                dispatch({ type: "setEndZone", patch: { spacing: U.toIn(value) } });
                 return true;
               }}
-              unit="in"
-              min={1}
+              unit={U.lengthUnit}
+              min={U.len(1)}
             />
           </FieldRow>
         </FieldGroup>
@@ -421,7 +474,10 @@ function ReinforcementCard({ input, dispatch }: PanelProps) {
       <div className="mt-1 flex flex-col gap-1 border-t border-border pt-2">
         <DerivedRow label="ρℓ provided" value={fmt(rho(input.vertical, input.geometry.h))} />
         <DerivedRow label="ρt provided" value={fmt(rho(input.horizontal, input.geometry.h))} />
-        <DerivedRow label="Ast total (vertical)" value={`${fmt(totalVerticalAs(input))} in²`} />
+        <DerivedRow
+          label="Ast total (vertical)"
+          value={`${fmt(U.area(totalVerticalAs(input)))} ${U.areaUnit}`}
+        />
       </div>
     </SectionCard>
   );
@@ -463,9 +519,13 @@ function SystemCard({ input, dispatch }: PanelProps) {
   const special = input.system === "special";
   const seismic = input.seismic;
   const preview = special ? seismicPreview(input) : null;
+  const U = viewOf(input);
+  // δ_e and h_sx are lengths; C_d and n_s are counts, and stay as typed.
   const setSeismic =
     (field: "deltaE" | "Cd" | "ns" | "hsx") => (value: number | undefined) => {
-      dispatch({ type: "setSeismic", patch: { [field]: value } });
+      const isLength = field === "deltaE" || field === "hsx";
+      const next = value === undefined || !isLength ? value : U.toIn(value);
+      dispatch({ type: "setSeismic", patch: { [field]: next } });
     };
 
   return (
@@ -521,12 +581,12 @@ function SystemCard({ input, dispatch }: PanelProps) {
             </FieldRow>
             <FieldRow label="elastic deflection δe" hint="top of wall">
               <NumberField
-                value={seismic?.deltaE}
+                value={seismic?.deltaE === undefined ? undefined : U.len(seismic.deltaE)}
                 onValueChange={setSeismic("deltaE")}
                 optional
-                unit="in"
+                unit={U.lengthUnit}
                 min={0}
-                step={0.1}
+                step={U.lengthStep(0.1)}
               />
             </FieldRow>
             <FieldRow label="deflection amplification Cd" hint="ASCE 7">
@@ -549,30 +609,42 @@ function SystemCard({ input, dispatch }: PanelProps) {
             </FieldRow>
             <FieldRow label="story height hsx" hint="first story, 21.2.4.1">
               <NumberField
-                value={seismic?.hsx}
+                value={seismic?.hsx === undefined ? undefined : U.len(seismic.hsx)}
                 onValueChange={setSeismic("hsx")}
                 optional
-                unit="in"
+                unit={U.lengthUnit}
                 min={0}
               />
             </FieldRow>
             <FieldRow label="height above crit. section hwcs" hint="18.10.3.1 — blank = hw">
               <NumberField
-                value={input.geometry.hwcs}
+                value={
+                  input.geometry.hwcs === undefined ? undefined : U.len(input.geometry.hwcs)
+                }
                 onValueChange={(value) =>
-                  dispatch({ type: "setGeometry", field: "hwcs", value })
+                  dispatch({
+                    type: "setGeometry",
+                    field: "hwcs",
+                    value: value === undefined ? undefined : U.toIn(value),
+                  })
                 }
                 optional
-                unit="in"
+                unit={U.lengthUnit}
                 min={0}
               />
             </FieldRow>
             <FieldRow label="unsupported height hu" hint="18.10.6.4(b) — blank = ℓu">
               <NumberField
-                value={input.geometry.hu}
-                onValueChange={(value) => dispatch({ type: "setGeometry", field: "hu", value })}
+                value={input.geometry.hu === undefined ? undefined : U.len(input.geometry.hu)}
+                onValueChange={(value) =>
+                  dispatch({
+                    type: "setGeometry",
+                    field: "hu",
+                    value: value === undefined ? undefined : U.toIn(value),
+                  })
+                }
                 optional
-                unit="in"
+                unit={U.lengthUnit}
                 min={0}
               />
             </FieldRow>
@@ -599,7 +671,7 @@ function SystemCard({ input, dispatch }: PanelProps) {
                 <DerivedRow label="ωv" value={fmt(preview.omegaV, { dp: 3 })} />
                 <DerivedRow
                   label={`Ve · ${preview.label}`}
-                  value={`${fmt(preview.Ve)} kip`}
+                  value={`${fmt(preview.Ve)} ${U.forceUnit}`}
                 />
               </>
             )}
@@ -618,6 +690,7 @@ function SystemCard({ input, dispatch }: PanelProps) {
 function BoundaryElementCard({ input, dispatch }: PanelProps) {
   const sbe = input.sbe;
   const cover = input.geometry.cover;
+  const U = viewOf(input);
 
   return (
     <SectionCard
@@ -652,26 +725,26 @@ function BoundaryElementCard({ input, dispatch }: PanelProps) {
           <FieldGroup>
             <FieldRow label="width b" hint="wall-thickness direction">
               <NumberField
-                value={sbe.width}
+                value={U.len(sbe.width)}
                 onValueChange={(value) => {
                   if (value === undefined || value <= 0) return false;
-                  dispatch({ type: "setSbe", patch: { width: value } });
+                  dispatch({ type: "setSbe", patch: { width: U.toIn(value) } });
                   return true;
                 }}
-                unit="in"
-                min={1}
+                unit={U.lengthUnit}
+                min={U.len(1)}
               />
             </FieldRow>
             <FieldRow label="length ℓbe" hint="from the compression fiber">
               <NumberField
-                value={sbe.length}
+                value={U.len(sbe.length)}
                 onValueChange={(value) => {
                   if (value === undefined || value <= 0) return false;
-                  dispatch({ type: "setSbe", patch: { length: value } });
+                  dispatch({ type: "setSbe", patch: { length: U.toIn(value) } });
                   return true;
                 }}
-                unit="in"
-                min={1}
+                unit={U.lengthUnit}
+                min={U.len(1)}
               />
             </FieldRow>
             <FieldRow label="longitudinal bar">
@@ -696,14 +769,14 @@ function BoundaryElementCard({ input, dispatch }: PanelProps) {
             </FieldRow>
             <FieldRow label="bar spacing hx" hint="18.10.6.4(f)">
               <NumberField
-                value={sbe.hx}
+                value={U.len(sbe.hx)}
                 onValueChange={(value) => {
                   if (value === undefined || value <= 0) return false;
-                  dispatch({ type: "setSbe", patch: { hx: value } });
+                  dispatch({ type: "setSbe", patch: { hx: U.toIn(value) } });
                   return true;
                 }}
-                unit="in"
-                min={1}
+                unit={U.lengthUnit}
+                min={U.len(1)}
               />
             </FieldRow>
             <FieldRow label="hoop / tie bar">
@@ -715,15 +788,15 @@ function BoundaryElementCard({ input, dispatch }: PanelProps) {
             </FieldRow>
             <FieldRow label="tie spacing s" hint="18.10.6.4(e)">
               <NumberField
-                value={sbe.tieSpacing}
+                value={U.len(sbe.tieSpacing)}
                 onValueChange={(value) => {
                   if (value === undefined || value <= 0) return false;
-                  dispatch({ type: "setSbe", patch: { tieSpacing: value } });
+                  dispatch({ type: "setSbe", patch: { tieSpacing: U.toIn(value) } });
                   return true;
                 }}
-                unit="in"
-                min={0.5}
-                step={0.5}
+                unit={U.lengthUnit}
+                min={U.lengthStep(0.5)}
+                step={U.lengthStep(0.5)}
               />
             </FieldRow>
             <FieldRow label="tie legs across b" hint="⊥ bc1, Table 18.10.6.4(g)">
@@ -742,14 +815,21 @@ function BoundaryElementCard({ input, dispatch }: PanelProps) {
           </FieldGroup>
 
           <div className="mt-1 flex flex-col gap-1 border-t border-border pt-2">
-            <DerivedRow label="Ag,be = b·ℓbe" value={`${fmt(sbe.width * sbe.length)} in²`} />
+            <DerivedRow
+              label="Ag,be = b·ℓbe"
+              value={`${fmt(U.area(sbe.width * sbe.length))} ${U.areaUnit}`}
+            />
             <DerivedRow
               label="Ach (core, to hoop outside)"
-              value={`${fmt(Math.max(0, sbe.width - 2 * cover) * Math.max(0, sbe.length - 2 * cover))} in²`}
+              value={`${fmt(
+                U.area(
+                  Math.max(0, sbe.width - 2 * cover) * Math.max(0, sbe.length - 2 * cover),
+                ),
+              )} ${U.areaUnit}`}
             />
             <DerivedRow
               label="Ash across bc1"
-              value={`${fmt(sbe.tieLegsAcrossWidth * BARS[sbe.tieBar].Ab, { dp: 2 })} in²`}
+              value={`${fmt(U.area(sbe.tieLegsAcrossWidth * BARS[sbe.tieBar].Ab), { dp: U.si ? 0 : 2 })} ${U.areaUnit}`}
             />
           </div>
         </>
@@ -763,26 +843,35 @@ function DemandCard({
   index,
   removable,
   dispatch,
+  U,
 }: {
   demand: Demands;
   index: number;
   removable: boolean;
   dispatch: (action: WallAction) => void;
+  U: UnitsView;
 }) {
+  // Demands are stored in kip and kip-ft whatever the field says, so the
+  // conversion happens here and the reducer never learns about kN.
+  const toCanonical = (key: "Pu" | "Mu" | "Vu" | "MuOut" | "VuOut", v: number): number =>
+    key === "Mu" || key === "MuOut" ? U.toKipFt(v) : U.toKip(v);
+  const shown = (key: "Pu" | "Mu" | "Vu" | "MuOut" | "VuOut", v: number | undefined) =>
+    v === undefined ? undefined : key === "Mu" || key === "MuOut" ? U.moment(v) : U.force(v);
   const patch =
     (key: "Pu" | "Mu" | "Vu" | "MuOut" | "VuOut", optional = false) =>
     (value: number | undefined) => {
       if (value === undefined && !optional) return;
+      const v = value === undefined ? undefined : toCanonical(key, value);
       const next: Partial<Omit<Demands, "id">> =
         key === "Pu"
-          ? { Pu: value ?? 0 }
+          ? { Pu: v ?? 0 }
           : key === "Mu"
-            ? { Mu: value ?? 0 }
+            ? { Mu: v ?? 0 }
             : key === "Vu"
-              ? { Vu: value ?? 0 }
+              ? { Vu: v ?? 0 }
               : key === "MuOut"
-                ? { MuOut: value }
-                : { VuOut: value };
+                ? { MuOut: v }
+                : { VuOut: v };
       dispatch({ type: "setDemand", id: demand.id, patch: next });
     };
 
@@ -835,28 +924,40 @@ function DemandCard({
       </div>
       <FieldGroup>
         <FieldRow label="Pu" hint="compression +" name={`${demand.id}-pu`}>
-          <NumberField value={demand.Pu} onValueChange={patch("Pu")} unit="kip" />
+          <NumberField
+            value={shown("Pu", demand.Pu)}
+            onValueChange={patch("Pu")}
+            unit={U.forceUnit}
+          />
         </FieldRow>
         <FieldRow label="Mu" hint="in-plane" name={`${demand.id}-mu`}>
-          <NumberField value={demand.Mu} onValueChange={patch("Mu")} unit="kip-ft" />
+          <NumberField
+            value={shown("Mu", demand.Mu)}
+            onValueChange={patch("Mu")}
+            unit={U.momentUnit}
+          />
         </FieldRow>
         <FieldRow label="Vu" hint="in-plane" name={`${demand.id}-vu`}>
-          <NumberField value={demand.Vu} onValueChange={patch("Vu")} unit="kip" />
+          <NumberField
+            value={shown("Vu", demand.Vu)}
+            onValueChange={patch("Vu")}
+            unit={U.forceUnit}
+          />
         </FieldRow>
         <FieldRow label="Mu,oop" hint="optional" name={`${demand.id}-mu-oop`}>
           <NumberField
-            value={demand.MuOut}
+            value={shown("MuOut", demand.MuOut)}
             onValueChange={patch("MuOut", true)}
             optional
-            unit="kip-ft"
+            unit={U.momentUnit}
           />
         </FieldRow>
         <FieldRow label="Vu,oop" hint="optional" name={`${demand.id}-vu-oop`}>
           <NumberField
-            value={demand.VuOut}
+            value={shown("VuOut", demand.VuOut)}
             onValueChange={patch("VuOut", true)}
             optional
-            unit="kip"
+            unit={U.forceUnit}
           />
         </FieldRow>
       </FieldGroup>
@@ -892,10 +993,45 @@ export function WallToolbar() {
   const input = useWallInput();
   const dispatch = useWallDispatch();
   const active = activePreset(input);
+  const system = viewOf(input).system;
 
   return (
-    <div className="flex items-center justify-between gap-2">
-      <h2 className="font-mono text-xs tracking-tight text-muted-foreground">wall</h2>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex items-center gap-2">
+        <h2 className="font-mono text-xs tracking-tight text-muted-foreground">wall</h2>
+        {/* Not a display preference: this picks the edition the checks are read
+            from — ACI 318-19 in psi, or ACI 318M-19 in MPa, whose coefficients
+            are independently rounded. It sits with the presets and the reset
+            because those are the other three controls that act on the whole
+            wall rather than one field of it. The short form is on the button;
+            the whole name arrives as the accessible one, as the presets do. */}
+        <ToggleGroup
+          value={[system]}
+          onValueChange={(value: string[]) => {
+            const next = value[0];
+            if (next !== "in-lb" && next !== "si") return;
+            dispatch({ type: "setUnits", value: next });
+          }}
+          variant="outline"
+          size="sm"
+          spacing={0}
+          aria-label="unit system"
+        >
+          {UNIT_SYSTEM_ORDER.map((id) => (
+            <ToggleGroupItem
+              key={id}
+              value={id}
+              size="sm"
+              variant="outline"
+              title={UNIT_SYSTEM_LABELS[id]}
+              aria-label={UNIT_SYSTEM_LABELS[id]}
+              className="font-mono text-xs2"
+            >
+              {UNIT_SYSTEM_SHORT[id]}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      </div>
       <div className="flex items-center gap-2">
         <ToggleGroup
           value={active === null ? [] : [active]}
@@ -965,6 +1101,7 @@ export function WallToolbar() {
 export function InputsPanel() {
   const input = useWallInput();
   const dispatch = useWallDispatch();
+  const U = viewOf(input);
 
   return (
     <div className="flex flex-col gap-3">
@@ -993,6 +1130,7 @@ export function InputsPanel() {
               index={index}
               removable={input.demands.length > 1}
               dispatch={dispatch}
+              U={U}
             />
           ))}
         </div>

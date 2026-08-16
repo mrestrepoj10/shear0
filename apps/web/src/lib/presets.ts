@@ -9,10 +9,82 @@
  * code can keep importing from one place.
  */
 
-import { GRADE60, type BarSize, type WallInput } from "@shear0/engine";
+import {
+  GRADE60,
+  GRADE80,
+  GRADE420,
+  GRADE550,
+  type BarSize,
+  type RebarGrade,
+  type UnitSystem,
+  type WallInput,
+} from "@shear0/engine";
 
 export const BAR_SIZES: BarSize[] = ["3", "4", "5", "6", "7", "8", "9", "10", "11"];
 export const K_VALUES = [0.8, 1.0, 2.0] as const;
+
+/**
+ * The reinforcement grades the app offers, keyed by the number an engineer says
+ * out loud. Grade 60/80 are ACI 318-19; Grade 420/550 are ACI 318M-19's own
+ * grades, which are *not* 60 and 80 converted — they carry the metric edition's
+ * E_s = 200,000 MPa and its ε_ty, so they are separate materials rather than a
+ * relabelling. Bar *sizes* stay imperial (#3–#11) in both systems: this app has
+ * no metric bar table, and inventing one would be worse than saying so.
+ */
+export const GRADES = {
+  "60": GRADE60,
+  "80": GRADE80,
+  "420": GRADE420,
+  "550": GRADE550,
+} satisfies Record<string, RebarGrade>;
+
+export type GradeId = keyof typeof GRADES;
+
+/** Which grades belong to which edition — the select's options, in order. */
+export const GRADE_IDS: Record<UnitSystem, GradeId[]> = {
+  "in-lb": ["60", "80"],
+  si: ["420", "550"],
+};
+
+export const GRADE_LABELS: Record<GradeId, string> = {
+  "60": "Grade 60",
+  "80": "Grade 80",
+  "420": "Grade 420",
+  "550": "Grade 550",
+};
+
+/**
+ * The id of a stored grade, matched on f_y.
+ *
+ * Deliberately *not* an identity check against the table: `/design` decodes
+ * `?w=` on the server and hands the wall to the client provider, which crosses
+ * the RSC boundary as JSON — the grade arrives as a structurally identical but
+ * different object, and an identity test silently reported every metric wall
+ * as Grade 60. The four f_y values are 0.9 ksi apart at their closest (60 vs
+ * 420 MPa = 60.92 ksi), so a tight tolerance separates them unambiguously.
+ *
+ * The fallback is for v1/v2 links, which carried only f_y rounded to a whole
+ * ksi and where 60 and 80 were the only two grades that existed.
+ */
+const FY_TOL = 0.01;
+
+export function gradeIdOf(grade: RebarGrade): GradeId {
+  for (const [id, known] of Object.entries(GRADES) as [GradeId, RebarGrade][]) {
+    if (Math.abs(known.fy - grade.fy) < FY_TOL) return id;
+  }
+  return grade.fy >= 70 ? "80" : "60";
+}
+
+/** The grade to land on when the unit system changes: same rank, other edition. */
+export function equivalentGrade(grade: RebarGrade, system: UnitSystem): GradeId {
+  const rank = GRADE_IDS[unitsKeyOf(grade)].indexOf(gradeIdOf(grade));
+  return GRADE_IDS[system][Math.max(rank, 0)] ?? GRADE_IDS[system][0]!;
+}
+
+function unitsKeyOf(grade: RebarGrade): UnitSystem {
+  const id = gradeIdOf(grade);
+  return id === "420" || id === "550" ? "si" : "in-lb";
+}
 
 /**
  * MNL-17(21) Shear Wall Example 1 — the handbook oracle the engine fixtures

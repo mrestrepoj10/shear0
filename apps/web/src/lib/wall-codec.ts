@@ -25,22 +25,29 @@
  * sm [sdc, δe|null, Cd|null, ns|null, hsx|null] | null seismic params          (v2)
  * sb [b, ℓbe, longBar, longCount, hx, tieBar, s, legs] | null   provided SBE   (v2)
  * pr "h" | "e" | null                                  φ reading, 21.2.4.1     (v2)
+ * u  "i" | "s"                                         unit system            (v3)
+ * gr "60" | "80" | "420" | "550"                       reinforcement grade    (v3)
  * ```
+ *
+ * v3 adds the unit system. It is part of the wall — it selects which edition of
+ * the code the checks evaluate — so it belongs in the save file rather than in
+ * a separate setting: a shared link opens in the units its author designed in.
+ * `gr` joins it because ACI 318M's Grade 420/550 are their own materials (their
+ * own E_s and ε_ty), which the v2 `f'y in ksi` slot cannot tell apart from a
+ * rounded Grade 60. v2 links keep decoding through the f_y fallback.
  */
 
 import {
-  GRADE60,
-  GRADE80,
   type BarSize,
   type Demands,
   type SbeProvided,
   type SeismicParams,
   type WallInput,
 } from "@shear0/engine";
-import { BAR_SIZES, EXAMPLE_1 } from "./presets";
+import { BAR_SIZES, EXAMPLE_1, GRADES, gradeIdOf, type GradeId } from "./presets";
 
 export const WALL_PARAM = "w";
-export const PAYLOAD_VERSION = 2;
+export const PAYLOAD_VERSION = 3;
 
 /** [lw, h, hw, lu, k, cover, hu?, hwcs?] */
 type GeometryTuple = [number, number, number, number, number, number, ...(number | null)[]];
@@ -70,6 +77,8 @@ interface Payload {
   sm: SeismicTuple | null;
   sb: SbeTuple | null;
   pr: "h" | "e" | null;
+  u: "i" | "s";
+  gr: GradeId;
 }
 
 function toPayload(w: WallInput): Payload {
@@ -123,6 +132,8 @@ function toPayload(w: WallInput): Payload {
         : w.phiSeismicReading === "exempt-18.10.4.6"
           ? "e"
           : "h",
+    u: w.units === "si" ? "s" : "i",
+    gr: gradeIdOf(w.grade),
   };
 }
 
@@ -165,6 +176,11 @@ function kFactor(v: unknown): 0.8 | 1.0 | 2.0 {
   return v === 0.8 ? 0.8 : v === 2 ? 2.0 : 1.0;
 }
 
+function gradeKey(v: unknown, fyKsi: number): GradeId {
+  if (isStr(v) && v in GRADES) return v as GradeId;
+  return fyKsi >= 70 ? "80" : "60";
+}
+
 const SDCS = ["A", "B", "C", "D", "E", "F"] as const;
 
 function sdc(v: unknown): SeismicParams["sdc"] {
@@ -175,7 +191,7 @@ function sdc(v: unknown): SeismicParams["sdc"] {
 function fromPayload(raw: unknown): WallInput | null {
   if (typeof raw !== "object" || raw === null) return null;
   const p = raw as Partial<Payload>;
-  if (p.v !== 1 && p.v !== PAYLOAD_VERSION) return null;
+  if (p.v !== 1 && p.v !== 2 && p.v !== PAYLOAD_VERSION) return null;
   if (!Array.isArray(p.g) || !Array.isArray(p.m) || !Array.isArray(p.vr) || !Array.isArray(p.hz)) {
     return null;
   }
@@ -211,7 +227,9 @@ function fromPayload(raw: unknown): WallInput | null {
       cover: num(p.g[5], d0.geometry.cover),
     },
     concrete: { fc: fcPsi / 1000, lambda: positive(p.m[1], 1) },
-    grade: num(p.m[2], 60) === 80 ? GRADE80 : GRADE60,
+    // v3 names the grade; v1/v2 carried only f_y in ksi, where 60 and 80 were
+    // the only two grades that existed.
+    grade: GRADES[gradeKey(p.gr, num(p.m[2], 60))],
     vertical: {
       bar: barSize(p.vr[0], d0.vertical.bar),
       spacing: positive(p.vr[1], d0.vertical.spacing),
@@ -274,6 +292,11 @@ function fromPayload(raw: unknown): WallInput | null {
 
   if (p.pr === "e") input.phiSeismicReading = "exempt-18.10.4.6";
   else if (p.pr === "h") input.phiSeismicReading = "handbook-conservative";
+
+  // Absent in v1/v2, and absent from an imperial v3 payload: the default is
+  // imperial, and `units` stays off the object entirely rather than being set
+  // to its own default (the engine reads an absent field as "in-lb").
+  if (p.u === "s") input.units = "si";
 
   return input;
 }
