@@ -34,8 +34,8 @@ stress-based boundary element triggers (18.10.6.2/.3), SBE sizing + confinement 
 ### Explicitly out of scope (for now — tracked, not planned)
 Coupling beams (18.10.7), wall piers (18.10.8), walls with openings / multiple segments, flanged
 sections (T/L/C/I), multi-story envelope along height, load-combination generation (users enter
-factored demands), slender out-of-plane method (11.8), shear friction (22.9), SI-first workflows
-(SI display conversion only), prestressed/precast walls.
+factored demands), slender out-of-plane method (11.8), shear friction (22.9), prestressed/precast
+walls. (SI is no longer on this list — see Units below.)
 
 ---
 
@@ -76,11 +76,14 @@ Checks compose these into a `CheckResult` (id, title, governing demand/capacity,
 status, trace root). The UI renders the DAG as an expandable report; `mathText(node)` renders
 LaTeX via KaTeX on the client. Tests assert on `value`s; snapshot tests pin the trace shape.
 
-**Units.** Internal canonical system = **US customary (kip, in, psi)** — it matches the ACI in-lb
-coefficient set and the handbook oracle. A tiny `Q(value, unit)` quantity helper converts at the
-boundary; UI offers unit toggles for display (SI input/coefficient set is future work — coefficients
-live in one `coefficients.ts` table per unit system to keep that door open). No unit library
-dependency; write ~100 lines ourselves.
+**Units.** Internal canonical system = **US customary (kip, in, ksi)** — it matches the ACI in-lb
+coefficient set and the handbook oracle, and *storage never leaves it in either mode*. `WallInput.
+units` selects the edition instead: each formula site branches to the ACI 318M-19 expression and
+evaluates it in MPa/mm/N, so SI is a second coefficient set rather than a display conversion (0.17
+is not 2/12.1, 4700 is not 57000/12.1). `unitScheme()` in `units.ts` is the per-system vocabulary
+every check and trace reads. The web app wraps it in `lib/units-view.ts` for field labels and the
+inverse conversions, and takes every factor from the engine's `convert()`. No unit library
+dependency. Known gap: bar sizes are imperial (#3–#11) in both systems.
 
 **Performance.** All checks including a 400-point fiber P–M curve run in well under 16 ms — compute
 synchronously on every input change (no debounce, no worker, no server). This is what makes the app
@@ -217,7 +220,9 @@ tests green.*
 ## 5. Decisions taken (veto anytime) & open questions
 
 **Taken:**
-1. **US-customary internal units** (handbook oracle + in-lb coefficient set); SI display later.
+1. **US-customary internal storage** (handbook oracle + in-lb coefficient set), with the ACI 318M-19
+   coefficient set branched at each formula site and chosen per wall by `units` — *not* a display
+   conversion of an in-lb answer.
 2. **TanStack Charts despite pre-alpha**, pinned + wrapped, with per-chart SVG escape hatch.
 3. **No backend, no accounts** — URL-as-save-file. (A share-link shortener or saved projects would
    be a later, separate decision.)

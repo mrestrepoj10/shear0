@@ -18,7 +18,9 @@
  * The 11.7.4.1 tie check is dropped: boundary confinement is governed by
  * 18.10.6.4/18.10.6.5, which this report evaluates properly.
  */
+import { stampEdition } from "../trace";
 import type { WallInput } from "../wall";
+import { unitsOf } from "../wall";
 import { checkSbeDetailing, checkSbeRequired } from "./boundary-element";
 import { checkMinThickness, checkSpacing } from "./detailing";
 import { checkFlexureAxial } from "./flexure-axial";
@@ -46,6 +48,8 @@ export function checkSpecialWall(w: WallInput): SpecialWallReport {
     if (demand.VuOut !== undefined) checks.push(checkOutOfPlaneShear(w, demand));
     return { demand, checks };
   });
-  const status = worstStatus([...general, ...perDemand.flatMap((d) => d.checks)]);
+  const all = [...general, ...perDemand.flatMap((d) => d.checks)];
+  if (unitsOf(w) === "si") stampEdition(all, "ACI 318M-19");
+  const status = worstStatus(all);
   return { general, perDemand, status };
 }

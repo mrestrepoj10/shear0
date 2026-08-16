@@ -16,8 +16,9 @@
 import { fmt, type WallReport, type WallInput } from "@shear0/engine";
 import { memo } from "react";
 import { useSelection } from "@/lib/wall-state";
+import { viewOf } from "@/lib/units-view";
 import { WallElevation } from "@/components/design/drawing/elevation";
-import { dim } from "@/components/design/drawing/format";
+import { dim, lenDim } from "@/components/design/drawing/format";
 import { WallPlanSection } from "@/components/design/drawing/plan-section";
 import { StrainProfile } from "@/components/design/drawing/strain-profile";
 import { STATUS_LABEL, statusText } from "@/components/design/status";
@@ -84,6 +85,7 @@ function Plate({
  */
 export const WallCanvas = memo(function WallCanvas({ input, report }: WallCanvasProps) {
   const { geometry } = input;
+  const U = viewOf(input);
   const governing = governingDemand(report);
   // Falls back to null outside a provider (the /learn contract holds). While
   // the P–M chart publishes a traced slice, the strain profile follows it.
@@ -94,7 +96,7 @@ export const WallCanvas = memo(function WallCanvas({ input, report }: WallCanvas
     <div className="flex min-w-0 flex-col gap-3">
       <Plate
         title="plan section"
-        note={`ℓw ${dim(geometry.lw)} × h ${dim(geometry.h)} in · true scale · bars enlarged`}
+        note={`ℓw ${lenDim(U, geometry.lw)} × h ${lenDim(U, geometry.h)} ${U.lengthUnit} · true scale · bars enlarged`}
       >
         <WallPlanSection input={input} />
         {/* `STATUS_LABEL`, not the raw enum: the caption used to read "— na
@@ -107,18 +109,20 @@ export const WallCanvas = memo(function WallCanvas({ input, report }: WallCanvas
       </Plate>
 
       <div className="grid min-w-0 grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-        <Plate title="elevation" note={`hw ${dim(geometry.hw)} in`}>
+        <Plate title="elevation" note={`hw ${lenDim(U, geometry.hw)} ${U.lengthUnit}`}>
           <WallElevation input={input} />
         </Plate>
 
         <Plate
           title="strain profile"
           note={
+            /* `tracedC` is the chart's own c, already in the wall's reporting
+               unit; `Pu` is a stored demand, so it converts. */
             tracedC !== undefined
-              ? `tracing P–M surface · c ${dim(tracedC, 1)} in`
+              ? `tracing P–M surface · c ${dim(tracedC, U.si ? 0 : 1)} ${U.lengthUnit}`
               : governing === null
                 ? "no load case"
-                : `${governing.label} · Pu ${fmt(governing.Pu, { dp: 0 })} kip`
+                : `${governing.label} · Pu ${fmt(U.force(governing.Pu), { dp: 0 })} ${U.forceUnit}`
           }
         >
           {governing === null && tracedC === undefined ? (

@@ -40,6 +40,16 @@ const WALL =
 const UNEVALUABLE =
   "eyJ2IjoyLCJnIjpbMzM2LDEyLDExMDQsMjAyLDAuOCwxLjVdLCJtIjpbNTAwMCwxLDYwXSwidnIiOlsiNSIsMjAwLDJdLCJoeiI6WyI1IiwxMiwyXSwiZXoiOm51bGwsImQiOltbImxvYWQtMSIsImJhc2UiLDEwMTUsMTg2MDAsMjM1LG51bGwsbnVsbF1dLCJ3dCI6ImIiLCJzeSI6Im8iLCJzbSI6bnVsbCwic2IiOm51bGwsInByIjpudWxsfQ";
 
+/**
+ * The same wall in SI (payload v3, `u: "s"`) — the metric edition all the way
+ * through: the calc sheet must render ACI 318M-19 in MPa/mm/kN, and the PDF
+ * must still be a PDF. The two payloads above stay at v2 on purpose: they are
+ * the back-compat evidence that a link shared before the unit system existed
+ * still decodes.
+ */
+const WALL_SI =
+  "eyJ2IjozLCJnIjpbMzM2LDEyLDExMDQsMjAyLDAuOCwxLjUsbnVsbCxudWxsXSwibSI6WzUwMDAsMSw2MC45MTZdLCJ2ciI6WyI1IiwxMiwyXSwiaHoiOlsiNSIsMTIsMl0sImV6IjpudWxsLCJkIjpbWyJsb2FkLTEiLCJiYXNlIiwxMDE1LDE4NjAwLDIzNSxudWxsLG51bGxdXSwid3QiOiJiIiwic3kiOiJvIiwic20iOm51bGwsInNiIjpudWxsLCJwciI6bnVsbCwidSI6InMiLCJnciI6IjQyMCJ9";
+
 const ROUTES = [
   { path: "/", label: "landing" },
   { path: "/learn", label: "learn index" },
@@ -50,6 +60,12 @@ const ROUTES = [
     label: "calc sheet (shared link)",
     expect: "design inputs",
   },
+  {
+    path: `/design/report?w=${WALL_SI}`,
+    label: "calc sheet (SI)",
+    expect: "ACI 318M-19",
+  },
+  { path: `/api/report/pdf?w=${WALL_SI}`, label: "pdf export (SI)", pdf: true },
   { path: "/api/report/pdf", label: "pdf export", pdf: true },
   { path: `/api/report/pdf?w=${WALL}`, label: "pdf export (shared link)", pdf: true },
   {

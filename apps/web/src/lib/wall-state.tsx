@@ -14,8 +14,6 @@
  */
 
 import {
-  GRADE60,
-  GRADE80,
   checkOrdinaryWall,
   checkSpecialWall,
   type Demands,
@@ -23,6 +21,7 @@ import {
   type EndZoneBars,
   type SbeProvided,
   type SeismicParams,
+  type UnitSystem,
   type WallInput,
   type WallReport,
 } from "@shear0/engine";
@@ -36,18 +35,23 @@ import {
   type Dispatch,
   type ReactNode,
 } from "react";
-import { EXAMPLE_1 } from "./presets";
+import { EXAMPLE_1, GRADES, equivalentGrade, type GradeId } from "./presets";
 
 export {
   BAR_SIZES,
   BLANK,
   EXAMPLE_1,
   EXAMPLE_2,
+  GRADES,
+  GRADE_IDS,
+  GRADE_LABELS,
+  gradeIdOf,
   K_VALUES,
   PRESETS,
   PRESET_LABELS,
   PRESET_ORDER,
   PRESET_SHORT,
+  type GradeId,
   type PresetId,
 } from "./presets";
 
@@ -65,8 +69,10 @@ export type WallAction =
   | { type: "setSeismic"; patch: Partial<SeismicParams> }
   | { type: "setSbe"; patch: Partial<SbeProvided> | null }
   | { type: "setPhiReading"; value: NonNullable<WallInput["phiSeismicReading"]> }
-  | { type: "setConcrete"; patch: { fcPsi?: number; lambda?: number } }
-  | { type: "setGrade"; fy: 60 | 80 }
+  /** f'c arrives in the canonical ksi — the panel converts from psi or MPa. */
+  | { type: "setConcrete"; patch: { fcKsi?: number; lambda?: number } }
+  | { type: "setGrade"; id: GradeId }
+  | { type: "setUnits"; value: UnitSystem }
   | {
       type: "setLayer";
       layer: "vertical" | "horizontal" | "both";
@@ -159,12 +165,28 @@ export function wallReducer(state: WallInput, action: WallAction): WallInput {
     case "setPhiReading":
       return { ...state, phiSeismicReading: action.value };
     case "setConcrete": {
-      const fc = action.patch.fcPsi === undefined ? state.concrete.fc : action.patch.fcPsi / 1000;
+      const fc = action.patch.fcKsi ?? state.concrete.fc;
       const lambda = action.patch.lambda ?? state.concrete.lambda;
       return { ...state, concrete: { fc, lambda } };
     }
     case "setGrade":
-      return { ...state, grade: action.fy === 80 ? GRADE80 : GRADE60 };
+      return { ...state, grade: GRADES[action.id] };
+    // Flipping the toggle changes which edition the checks evaluate — nothing
+    // about the wall itself. Every stored quantity is canonical kip/in/ksi in
+    // both systems, so the geometry, the demands and f'c carry over untouched
+    // and only the fields' spelling changes. The grade is the one exception:
+    // Grade 60 has no meaning in ACI 318M, so it moves to the metric edition's
+    // grade of the same rank (60 ↔ 420, 80 ↔ 550).
+    case "setUnits": {
+      if (action.value === (state.units ?? "in-lb")) return state;
+      const grade = GRADES[equivalentGrade(state.grade, action.value)];
+      if (action.value === "in-lb") {
+        const rest = { ...state, grade };
+        delete rest.units;
+        return rest;
+      }
+      return { ...state, units: action.value, grade };
+    }
     case "setLayer": {
       const next = { ...state };
       if (action.layer === "vertical" || action.layer === "both") {

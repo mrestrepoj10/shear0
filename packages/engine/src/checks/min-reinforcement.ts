@@ -9,15 +9,25 @@
  * `system === "ordinary"` branching: 18.10.2.1 reuses the Table 11.6.1 values
  * for low-shear special walls, so these nodes are reusable there.
  *
- * psi/ksi seam: f'c and fy are stored in ksi and traced in psi, because every
- * in-lb coefficient below (0.5, αc = 3/2, √f'c) is calibrated to psi.
+ * Two-edition seam: f'c and fy are stored in the canonical ksi, but the strength
+ * coefficients below are nonhomogeneous and each edition prints its own —
+ * αc = 3/2 (psi, in²) in ACI 318-19 11.5.4.3 against αc = 0.25/0.17 (MPa, mm²)
+ * in ACI 318M-19 11.5.4.3. So the leaves are traced in the stress/length units
+ * the edition in force is written in (psi/in or MPa/mm), and every formula site
+ * branches on `schemeOf(w)` to the expression that edition actually prints —
+ * never in-lb coefficients fed metric numbers. The Table 11.6.1 ρ values and
+ * Eq. (11.6.2) are dimensionless and identical in both editions; only the row
+ * labels change (f_y ≥ 420 MPa for the 60,000 psi row, No. 16 metric for No. 5).
+ * The 11.6.1 threshold coefficient is the one place the printed metric value is
+ * not used — see the comment on it below.
  */
 import { BARS, fcInput, lambdaInput } from "../materials";
 import type { BarSize } from "../materials";
 import { aci, checkResult, constant, derive, input } from "../trace";
 import type { CheckResult, Traced } from "../trace";
-import { fmtTex, ksiToPsi, sqrtFcPsi } from "../units";
-import { Acv, hInput, hwOverLw } from "../wall";
+import { fmtTex, ksiToMPa, unitScheme } from "../units";
+import type { UnitScheme } from "../units";
+import { Acv, hInput, hwOverLw, schemeOf } from "../wall";
 import type { Demands, DistributedLayer, WallInput } from "../wall";
 
 /** φ for shear, ACI 318-19 Table 21.2.1. */
@@ -28,7 +38,7 @@ export interface ConcreteShearNodes {
   /** hw/ℓw, the aspect ratio αc is read from */
   ratio: Traced;
   alphaC: Traced;
-  /** αc·λ·√f'c·Acv — the concrete contribution to Vn, kip */
+  /** αc·λ·√f'c·Acv — the concrete contribution to Vn, in the wall's force unit (kip | kN) */
   Vc: Traced;
 }
 
@@ -49,36 +59,51 @@ export function phiShearNode(ns: string): Traced {
 }
 
 /**
- * αc per 11.5.4.3 and the concrete-alone shear term αc·λ·√f'c·Acv (kip).
- * Shared by the 11.6 threshold and by the 11.7 "is shear reinforcement
- * required for in-plane strength?" test.
+ * αc per 11.5.4.3 and the concrete-alone shear term αc·λ·√f'c·Acv, in the force
+ * unit of the edition in force (kip | kN). Shared by the 11.6 threshold and by
+ * the 11.7 "is shear reinforcement required for in-plane strength?" test.
  */
 export function concreteShearNodes(w: WallInput, ns: string): ConcreteShearNodes {
+  const U = schemeOf(w);
   const acv = Acv(w);
   const ratio = hwOverLw(w);
-  const fc = fcInput(w.concrete);
+  const fc = fcInput(w.concrete, U);
   const lambda = lambdaInput(w.concrete);
   const r = ratio.value;
+
+  // 11.5.4.3 squat/slender coefficients: 3 / 2 with f'c in psi and A_cv in in².
+  // ACI 318M-19 11.5.4.3 prints its own rounding, 0.25 / 0.17, with f'c in MPa
+  // and A_cv in mm². Linear interpolation between h_w/ℓ_w = 1.5 and 2.0 in both.
+  const squat = U.si ? 0.25 : 3;
+  const slender = U.si ? 0.17 : 2;
+  const slope = (squat - slender) / 0.5;
+  const dp = U.si ? 3 : 0;
+  const squatTex = fmtTex(squat, { dp });
+  const slenderTex = fmtTex(slender, { dp });
+  const slopeTex = fmtTex(slope, { dp: U.si ? 2 : 0 });
+  const coeffNote = U.si
+    ? `metric coefficients ${squatTex} and ${slenderTex}`
+    : `in-lb coefficients ${squatTex} and ${slenderTex}`;
 
   let alphaValue: number;
   let alphaFormula: string;
   let alphaSubst: string;
   let alphaNote: string;
   if (r <= 1.5) {
-    alphaValue = 3;
-    alphaFormula = "\\alpha_c = 3";
-    alphaSubst = `\\alpha_c = 3 \\quad (h_w/\\ell_w = ${fmtTex(r, { dp: 3 })} \\le 1.5)`;
-    alphaNote = "squat wall, hw/ℓw ≤ 1.5 (in-lb coefficient)";
+    alphaValue = squat;
+    alphaFormula = `\\alpha_c = ${squatTex}`;
+    alphaSubst = `\\alpha_c = ${squatTex} \\quad (h_w/\\ell_w = ${fmtTex(r, { dp: 3 })} \\le 1.5)`;
+    alphaNote = `squat wall, hw/ℓw ≤ 1.5 (${U.si ? "metric" : "in-lb"} coefficient)`;
   } else if (r >= 2) {
-    alphaValue = 2;
-    alphaFormula = "\\alpha_c = 2";
-    alphaSubst = `\\alpha_c = 2 \\quad (h_w/\\ell_w = ${fmtTex(r, { dp: 3 })} \\ge 2.0)`;
-    alphaNote = "slender wall, hw/ℓw ≥ 2.0 (in-lb coefficient)";
+    alphaValue = slender;
+    alphaFormula = `\\alpha_c = ${slenderTex}`;
+    alphaSubst = `\\alpha_c = ${slenderTex} \\quad (h_w/\\ell_w = ${fmtTex(r, { dp: 3 })} \\ge 2.0)`;
+    alphaNote = `slender wall, hw/ℓw ≥ 2.0 (${U.si ? "metric" : "in-lb"} coefficient)`;
   } else {
-    alphaValue = 3 - 2 * (r - 1.5);
-    alphaFormula = "\\alpha_c = 3 - 2\\,(h_w/\\ell_w - 1.5)";
-    alphaSubst = `\\alpha_c = 3 - 2\\,(${fmtTex(r, { dp: 3 })} - 1.5) = ${fmtTex(alphaValue, { dp: 3 })}`;
-    alphaNote = "linear interpolation for 1.5 < hw/ℓw < 2.0 (in-lb coefficients 3 and 2)";
+    alphaValue = squat - slope * (r - 1.5);
+    alphaFormula = `\\alpha_c = ${squatTex} - ${slopeTex}\\,(h_w/\\ell_w - 1.5)`;
+    alphaSubst = `\\alpha_c = ${squatTex} - ${slopeTex}\\,(${fmtTex(r, { dp: 3 })} - 1.5) = ${fmtTex(alphaValue, { dp: U.si ? 4 : 3 })}`;
+    alphaNote = `linear interpolation for 1.5 < hw/ℓw < 2.0 (${coeffNote})`;
   }
 
   const alphaC = derive({
@@ -94,20 +119,23 @@ export function concreteShearNodes(w: WallInput, ns: string): ConcreteShearNodes
     note: `${alphaNote}; hw/ℓw shall be taken as the larger of the entire-wall and segment ratios — the entire-wall ratio is used here`,
   });
 
-  const fcPsi = ksiToPsi(w.concrete.fc);
-  const sqrtFc = sqrtFcPsi(w.concrete.fc);
-  const VcLb = alphaValue * w.concrete.lambda * sqrtFc * acv.value;
+  // f'c in the stress unit the edition is written in; MPa × mm² = N exactly as
+  // psi × in² = lb, so the same ÷1000 lands on kN | kip.
+  const fcCode = U.str(w.concrete.fc);
+  const sqrtFc = U.sqrtFc(w.concrete.fc);
+  const baseForceTex = U.si ? "\\text{N}" : "\\text{lb}";
+  const VcBase = alphaValue * w.concrete.lambda * sqrtFc * acv.value;
   const Vc = derive({
     id: `${ns}.Vc`,
     symbol: "α_cλ√f'_c·A_cv",
     label: "concrete contribution to in-plane shear strength",
-    value: VcLb / 1000,
-    unit: "kip",
+    value: VcBase / 1000,
+    unit: U.force,
     formula: "\\alpha_c\\,\\lambda\\sqrt{f'_c}\\,A_{cv}",
     substitution:
-      `${fmtTex(alphaValue, { dp: 2 })} \\times ${fmtTex(w.concrete.lambda, { dp: 2 })} \\times ` +
-      `\\sqrt{${fmtTex(fcPsi)}} \\times ${fmtTex(acv.value)} = ${fmtTex(VcLb)}\\ \\text{lb} = ` +
-      `${fmtTex(VcLb / 1000)}\\ \\text{kip}`,
+      `${fmtTex(alphaValue, { dp: U.si ? 4 : 2 })} \\times ${fmtTex(w.concrete.lambda, { dp: 2 })} \\times ` +
+      `\\sqrt{${fmtTex(fcCode)}} \\times ${fmtTex(acv.value)} = ${fmtTex(VcBase)}\\ ${baseForceTex} = ` +
+      `${fmtTex(VcBase / 1000)}\\ ${U.forceTex}`,
     ref: aci("11.5.4.3", "11.5.4.3"),
     inputs: [alphaC, lambda, fc, acv],
     note: "ρt·fyt term omitted — this is the concrete-alone strength used by the 11.6 threshold and the 11.7 spacing trigger",
@@ -116,14 +144,17 @@ export function concreteShearNodes(w: WallInput, ns: string): ConcreteShearNodes
   return { acv, ratio, alphaC, Vc };
 }
 
-/** Vu as a traced leaf, namespaced per check. */
-export function VuNode(d: Demands, ns: string): Traced {
+/**
+ * Vu as a traced leaf, namespaced per check. Storage is always kip; the leaf is
+ * emitted in the force unit of the scheme the surrounding graph is built in.
+ */
+export function VuNode(d: Demands, ns: string, U: UnitScheme = unitScheme()): Traced {
   return input(
     `${ns}.Vu`,
     "V_u",
     `factored in-plane shear (${d.label ?? d.id})`,
-    d.Vu,
-    "kip",
+    U.frc(d.Vu),
+    U.force,
   );
 }
 
@@ -139,9 +170,19 @@ export function rhoProvidedNode(
   key: "l" | "t",
   layer: DistributedLayer,
 ): Traced {
+  // ρ is dimensionless and identical in both editions; only the leaves it is
+  // assembled from carry units, so they are emitted in the scheme's units and
+  // the substitution reads in in²/in or mm²/mm consistently.
+  const U = schemeOf(w);
   const h = hInput(w);
-  const Ab = BARS[layer.bar].Ab;
-  const AbNode = input(`${ns}.rho_${key}.Ab`, "A_b", `area of one No. ${layer.bar} bar`, Ab, "in2");
+  const Ab = U.ar(BARS[layer.bar].Ab);
+  const AbNode = input(
+    `${ns}.rho_${key}.Ab`,
+    "A_b",
+    `area of one No. ${layer.bar} bar`,
+    Ab,
+    U.area,
+  );
   const nNode = input(
     `${ns}.rho_${key}.n_c`,
     "n_c",
@@ -149,8 +190,8 @@ export function rhoProvidedNode(
     layer.curtains,
     "1",
   );
-  const sNode = input(`${ns}.rho_${key}.s`, "s", "bar spacing", layer.spacing, "in");
-  const value = (layer.curtains * Ab) / (layer.spacing * w.geometry.h);
+  const sNode = input(`${ns}.rho_${key}.s`, "s", "bar spacing", U.len(layer.spacing), U.length);
+  const value = (layer.curtains * Ab) / (sNode.value * h.value);
   return derive({
     id: `${ns}.rho_${key}`,
     symbol: key === "l" ? "ρ_ℓ,prov" : "ρ_t,prov",
@@ -163,7 +204,7 @@ export function rhoProvidedNode(
     formula: "\\rho = \\dfrac{n_c A_b}{s\\,h}",
     substitution:
       `\\rho = \\dfrac{${fmtTex(layer.curtains)} \\times ${fmtTex(Ab, { dp: 2 })}}` +
-      `{${fmtTex(layer.spacing, { dp: 1 })} \\times ${fmtTex(w.geometry.h, { dp: 1 })}} = ${fmtTex(value)}`,
+      `{${fmtTex(sNode.value, { dp: 1 })} \\times ${fmtTex(h.value, { dp: 1 })}} = ${fmtTex(value)}`,
     ref: aci("11.6"),
     inputs: [nNode, AbNode, sNode, h],
   });
@@ -175,27 +216,40 @@ interface TableRow {
   note: string;
 }
 
-/** Table 11.6.1, deformed-bar rows (WWR and precast rows not modeled yet). */
-function tableRow(barSize: BarSize, fyKsi: number): TableRow {
+/**
+ * Table 11.6.1, deformed-bar rows (WWR and precast rows not modeled yet).
+ *
+ * The ρ values themselves are dimensionless and ACI 318M-19 Table 11.6.1 prints
+ * them unchanged; only the row labels differ — the bar-size split is No. 16
+ * metric (≡ No. 5) and the strength split is f_y ≥ 420 MPa (≈ 60,916 psi, not
+ * an exact conversion). The comparison is made against the split printed in the
+ * edition in force: Grade 60 is 413.7 MPa, below the metric split, so the same
+ * bars land in the stricter row when the wall is evaluated in SI.
+ */
+function tableRow(barSize: BarSize, fyKsi: number, U: UnitScheme): TableRow {
+  const sizeSplit = U.si ? "No. 16 metric" : "No. 5";
+  const barLabel = U.si ? `No. ${barSize} in-lb` : `No. ${barSize}`;
+  const fySplit = U.si ? "420 MPa" : "60,000 psi";
   const big = Number(barSize) > 5;
   if (big) {
     return {
       rhoL: 0.0015,
       rhoT: 0.0025,
-      note: `Table 11.6.1 row: deformed bars larger than No. 5 (No. ${barSize}), any f_y`,
+      note: `Table 11.6.1 row: deformed bars larger than ${sizeSplit} (${barLabel}), any f_y`,
     };
   }
-  if (fyKsi >= 60) {
+  const relaxed = U.si ? ksiToMPa(fyKsi) >= 420 : fyKsi >= 60;
+  if (relaxed) {
     return {
       rhoL: 0.0012,
       rhoT: 0.002,
-      note: `Table 11.6.1 row: deformed bars No. 5 or smaller (No. ${barSize}), f_y ≥ 60,000 psi`,
+      note: `Table 11.6.1 row: deformed bars ${sizeSplit} or smaller (${barLabel}), f_y ≥ ${fySplit}`,
     };
   }
   return {
     rhoL: 0.0015,
     rhoT: 0.0025,
-    note: `Table 11.6.1 row: deformed bars No. 5 or smaller (No. ${barSize}), f_y < 60,000 psi`,
+    note: `Table 11.6.1 row: deformed bars ${sizeSplit} or smaller (${barLabel}), f_y < ${fySplit}`,
   };
 }
 
@@ -215,44 +269,67 @@ function utilization(required: number, provided: number): number {
  */
 export function checkMinReinforcement(w: WallInput, demand: Demands): CheckResult {
   const ns = "minreinf";
+  const U = schemeOf(w);
   const { acv, ratio, Vc } = concreteShearNodes(w, ns);
   const phi = phiShearNode(ns);
-  const Vu = VuNode(demand, ns);
-  const fyPsi = ksiToPsi(w.grade.fy);
-  const fy = input(`${ns}.fy`, "f_y", "specified yield strength of reinforcement", fyPsi, "psi");
+  const Vu = VuNode(demand, ns, U);
+  const fyCode = U.str(w.grade.fy);
+  const fy = input(
+    `${ns}.fy`,
+    "f_y",
+    "specified yield strength of reinforcement",
+    fyCode,
+    U.stress,
+  );
 
+  // 11.6.1 threshold coefficient. ACI 318M-19 11.6.1/11.6.2 literally print 0.04
+  // against the in-lb 0.5 — but that 0.04 was converted as though α_c were still
+  // the in-lb 3.0/2.0, while 11.5.4.3 of the same metric edition already converts
+  // α_c to 0.25/0.17. Taking 0.04 literally on top of the metric α_c would make
+  // the metric threshold 12× smaller than the in-lb one, which is not the Code's
+  // intent, so 0.5 is used in both editions with each edition's own α_c.
+  const HALF = 0.5;
+  const halfTex = "0.5";
   const half = constant(
     `${ns}.threshold_coeff`,
-    "0.5",
+    halfTex,
     "threshold coefficient on the concrete-alone shear strength",
-    0.5,
+    HALF,
     "1",
     aci("11.6.1"),
+    U.si
+      ? "ACI 318M-19 11.6.1 prints the coefficient as 0.04, converted from the in-lb 0.5 as though α_c were still the in-lb 3.0/2.0; because 11.5.4.3 already converts α_c to 0.25/0.17, taking 0.04 literally would make the metric threshold 12× smaller than the in-lb one. 0.5 is used with the metric α_c so the two editions agree."
+      : undefined,
   );
   const thresholdValue = half.value * phi.value * Vc.value;
   const threshold = derive({
     id: `${ns}.threshold`,
-    symbol: "0.5φα_cλ√f'_c·A_cv",
+    symbol: `${halfTex}φα_cλ√f'_c·A_cv`,
     label: "shear demand below which Table 11.6.1 minimums apply",
     value: thresholdValue,
-    unit: "kip",
-    formula: "0.5\\,\\phi\\,\\alpha_c\\lambda\\sqrt{f'_c}\\,A_{cv}",
+    unit: U.force,
+    formula: `${halfTex}\\,\\phi\\,\\alpha_c\\lambda\\sqrt{f'_c}\\,A_{cv}`,
     substitution:
-      `0.5 \\times ${fmtTex(phi.value, { dp: 2 })} \\times ${fmtTex(Vc.value)} = ` +
-      `${fmtTex(thresholdValue)}\\ \\text{kip}`,
+      `${halfTex} \\times ${fmtTex(phi.value, { dp: 2 })} \\times ${fmtTex(Vc.value)} = ` +
+      `${fmtTex(thresholdValue)}\\ ${U.forceTex}`,
     ref: aci("11.6.1"),
     inputs: [half, phi, Vc],
+    ...(U.si
+      ? {
+          note: "ACI 318M-19 11.6.1 prints the coefficient as 0.04, converted from the in-lb 0.5 as though α_c were still the in-lb 3.0/2.0; because 11.5.4.3 already converts α_c to 0.25/0.17, taking 0.04 literally would make the metric threshold 12× smaller than the in-lb one. 0.5 is used with the metric α_c so the two editions agree.",
+        }
+      : {}),
   });
 
-  const exceeds = demand.Vu > thresholdValue;
+  const exceeds = Vu.value > thresholdValue;
   const trigger = derive<boolean>({
     id: `${ns}.trigger`,
-    symbol: "V_u > 0.5φα_cλ√f'_c·A_cv",
+    symbol: `V_u > ${halfTex}φα_cλ√f'_c·A_cv`,
     label: "high-shear trigger",
     value: exceeds,
     unit: "1",
-    formula: "V_u > 0.5\\,\\phi\\,\\alpha_c\\lambda\\sqrt{f'_c}\\,A_{cv}",
-    substitution: `${fmtTex(demand.Vu)} > ${fmtTex(thresholdValue)} \\Rightarrow \\text{${exceeds}}`,
+    formula: `V_u > ${halfTex}\\,\\phi\\,\\alpha_c\\lambda\\sqrt{f'_c}\\,A_{cv}`,
+    substitution: `${fmtTex(Vu.value)} > ${fmtTex(thresholdValue)} \\Rightarrow \\text{${exceeds}}`,
     ref: aci("11.6.1"),
     inputs: [Vu, threshold],
     note: exceeds
@@ -267,21 +344,21 @@ export function checkMinReinforcement(w: WallInput, demand: Demands): CheckResul
   let rhoTReq: Traced;
 
   if (!exceeds) {
-    const rowL = tableRow(w.vertical.bar, w.grade.fy);
-    const rowT = tableRow(w.horizontal.bar, w.grade.fy);
+    const rowL = tableRow(w.vertical.bar, w.grade.fy, U);
+    const rowT = tableRow(w.horizontal.bar, w.grade.fy, U);
     const dbL = input(
       `${ns}.table.db_l`,
       "d_b,ℓ",
       `vertical bar size (No. ${w.vertical.bar})`,
-      BARS[w.vertical.bar].db,
-      "in",
+      U.len(BARS[w.vertical.bar].db),
+      U.length,
     );
     const dbT = input(
       `${ns}.table.db_t`,
       "d_b,t",
       `horizontal bar size (No. ${w.horizontal.bar})`,
-      BARS[w.horizontal.bar].db,
-      "in",
+      U.len(BARS[w.horizontal.bar].db),
+      U.length,
     );
     rhoLReq = derive({
       id: `${ns}.rho_l_req`,
@@ -330,13 +407,16 @@ export function checkMinReinforcement(w: WallInput, demand: Demands): CheckResul
       note: "11.6.2(b)",
     });
 
-    // ρt required for strength by 11.5.4.3, rearranged from
-    // Vu/φ <= (αc·λ·√f'c + ρt·fyt)·Acv. Zero whenever the concrete alone
+    // ρt required for strength by 11.5.4.3 / ACI 318M-19 11.5.4.3, rearranged
+    // from Vu/φ <= (αc·λ·√f'c + ρt·fyt)·Acv. The rearrangement is the same in
+    // both editions — the edition's αc is already baked into Vc — but the
+    // arithmetic is done in the base force unit of the edition (lb | N) against
+    // Acv in in² | mm² and fyt in psi | MPa. Zero whenever the concrete alone
     // carries Vu/φ — the case that waives the ρl requirement below.
-    const VuLb = demand.Vu * 1000;
-    const demandOverPhi = VuLb / phi.value;
-    const VcLb = Vc.value * 1000;
-    const rhoTStrengthValue = Math.max(0, (demandOverPhi - VcLb) / (fyPsi * acv.value));
+    const VuBase = Vu.value * 1000;
+    const demandOverPhi = VuBase / phi.value;
+    const VcBase = Vc.value * 1000;
+    const rhoTStrengthValue = Math.max(0, (demandOverPhi - VcBase) / (fyCode * acv.value));
     const rhoTStrength = derive({
       id: `${ns}.rho_t_strength`,
       symbol: "ρ_t,strength",
@@ -346,8 +426,8 @@ export function checkMinReinforcement(w: WallInput, demand: Demands): CheckResul
       formula:
         "\\rho_{t,strength} = \\max\\!\\left(0,\\ \\dfrac{V_u/\\phi - \\alpha_c\\lambda\\sqrt{f'_c}A_{cv}}{f_{yt}A_{cv}}\\right)",
       substitution:
-        `\\max\\!\\left(0,\\ \\dfrac{${fmtTex(demandOverPhi)} - ${fmtTex(VcLb)}}` +
-        `{${fmtTex(fyPsi)} \\times ${fmtTex(acv.value)}}\\right) = ${fmtTex(rhoTStrengthValue)}`,
+        `\\max\\!\\left(0,\\ \\dfrac{${fmtTex(demandOverPhi)} - ${fmtTex(VcBase)}}` +
+        `{${fmtTex(fyCode)} \\times ${fmtTex(acv.value)}}\\right) = ${fmtTex(rhoTStrengthValue)}`,
       ref: aci("11.5.4.3", "11.5.4.3"),
       inputs: [Vu, phi, Vc, fy, acv],
       note:
@@ -358,6 +438,8 @@ export function checkMinReinforcement(w: WallInput, demand: Demands): CheckResul
 
     // Eq. (11.6.2): 0.0025 + 0.5(2.5 - hw/ℓw)(ρt - 0.0025), raw hw/ℓw (no cap
     // in the Code text). MNL-17 Ex. 1 caps the ratio at 2.0 and prints 0.0030.
+    // Fully dimensionless — ACI 318M-19 Eq. (11.6.2) prints the same numbers, so
+    // there is nothing to branch here.
     const eqValue = 0.0025 + 0.5 * (2.5 - ratio.value) * (rhoTProv.value - 0.0025);
     const eq = derive({
       id: `${ns}.rho_l_eq`,

@@ -16,21 +16,21 @@ import { BARS, fcInput } from "../materials";
 import { cAt } from "../section/interaction";
 import { aci, checkResult, constant, derive, input } from "../trace";
 import type { CheckResult, Traced } from "../trace";
-import { fmtTex, kipFtToKipIn, ksiToPsi } from "../units";
+import { fmtTex, kipFtToKipIn, kipFtToKnM, kipToKn } from "../units";
+import type { UnitScheme } from "../units";
 import {
   Acv,
   Ag,
   barPositions,
   hInput,
   huInput,
-  huValue,
   hwcsInput,
   hwcsOverLw,
   hwcsValue,
   lwInput,
+  schemeOf,
 } from "../wall";
 import type { Demands, WallInput } from "../wall";
-import { sqrtFcNode } from "./special-reinforcement";
 
 const TOL = 1e-9;
 
@@ -43,11 +43,48 @@ const DRIFT_FLOOR = 0.005;
 /** 18.10.6.2(b)(iii): the computed drift capacity need not be taken below this. */
 const DRIFT_CAPACITY_FLOOR = 0.015;
 
+/**
+ * Trailing length unit for substitutions: `in.` (the abbreviation ACI writes for
+ * inches) or `mm`. Both are derived from `U.lengthTex` so the two editions never
+ * drift apart.
+ */
+function lenTexOf(U: UnitScheme): string {
+  return U.si ? U.lengthTex : `${U.lengthTex}.`;
+}
+
+/** The same abbreviation as `lenTexOf`, for plain-prose `note:` strings. */
+function lenWordOf(U: UnitScheme): string {
+  return U.si ? "mm" : "in.";
+}
+
+/**
+ * √f'c in the edition's own stress unit — psi^0.5 for ACI 318-19, MPa^0.5 for
+ * ACI 318M-19. Local to this check so its whole trace graph is built in one
+ * system (see `UnitScheme`).
+ */
+function sqrtFcLocal(w: WallInput, U: UnitScheme): Traced {
+  const fc = fcInput(w.concrete, U);
+  const value = U.sqrtFc(w.concrete.fc);
+  return derive({
+    id: `${NS}.sqrt_fc`,
+    symbol: "√f'_c",
+    label: "square root of the specified compressive strength",
+    value,
+    unit: U.stress,
+    formula: "\\sqrt{f'_c}",
+    substitution: `\\sqrt{${fmtTex(U.str(w.concrete.fc))}} = ${fmtTex(value, { dp: U.si ? 3 : 1 })}\\ ${U.stressTex}^{0.5}`,
+    inputs: [fc],
+  });
+}
+
 export interface SbeRequirement {
   /** which of 18.10.6.2 / 18.10.6.3 governs, per 18.10.6.1 */
   method: "displacement" | "stress";
   required: boolean;
-  /** largest neutral axis depth at M_n over the supplied demands, in */
+  /**
+   * largest neutral axis depth at M_n over the supplied demands, in the wall's
+   * reporting length unit (in | mm — `cAt` already returns it converted)
+   */
   c: number;
   cNode: Traced;
   /** δ_u/h_wcs after the 0.005 floor — displacement path only */
@@ -84,6 +121,7 @@ export function sbeRequirement(w: WallInput, demand: Demands): SbeRequirement {
  * which in practice means the E combination with the largest compression.
  */
 function neutralAxis(w: WallInput): Traced {
+  const U = schemeOf(w);
   let best = Number.NEGATIVE_INFINITY;
   let governing = "";
   for (const d of w.demands) {
@@ -108,18 +146,19 @@ function neutralAxis(w: WallInput): Traced {
     `${NS_REQ}.Pu_c`,
     "P_u",
     "factored axial force governing the neutral axis depth",
-    PuGoverning,
-    "kip",
+    U.frc(PuGoverning),
+    U.force,
     `largest c over the supplied demands — governed by "${governing}"`,
   );
   return derive({
     id: `${NS_REQ}.c`,
     symbol: "c",
     label: "neutral axis depth at nominal moment strength",
+    // `cAt` already returns c in the wall's reporting length unit (in | mm).
     value: best,
-    unit: "in",
+    unit: U.length,
     formula: "\\text{solve } P_n(c) = P_u \\quad (\\varepsilon_{cu} = 0.003,\\ a = \\beta_1 c)",
-    substitution: `P_n(c) = ${fmtTex(PuGoverning)}\\ \\text{kip} \\Rightarrow c = ${fmtTex(best, { dp: 2 })}\\ \\text{in.}`,
+    substitution: `P_n(c) = ${fmtTex(U.frc(PuGoverning))}\\ ${U.forceTex} \\Rightarrow c = ${fmtTex(best, { dp: U.si ? 1 : 2 })}\\ ${lenTexOf(U)}`,
     ref: aci("18.10.6.2", "18.10.6.2a"),
     inputs: [Pu],
     note: `largest neutral axis depth over the supplied load combinations (governing combination: ${governing}); no φ is applied — this is the nominal-strength c`,
@@ -128,29 +167,32 @@ function neutralAxis(w: WallInput): Traced {
 
 /** σ = P_u/A_g + M_u (ℓ_w/2)/I_g — linear-elastic gross section, 18.10.6.3. */
 export function sigmaExtreme(w: WallInput, demand: Demands): Traced {
+  const U = schemeOf(w);
   const ag = Ag(w);
   const h = hInput(w);
   const lw = lwInput(w);
-  const IgValue = (w.geometry.h * w.geometry.lw ** 3) / 12;
+  // The section properties are assembled in the local system (in⁴ / mm⁴), never
+  // by converting an in-lb stress — ACI 318M-19 18.10.6.3 is evaluated in MPa.
+  const IgValue = (h.value * lw.value ** 3) / 12;
   const Ig = derive({
     id: `${NS_REQ}.Ig`,
     symbol: "I_g",
     label: "gross moment of inertia about the strong axis",
     value: IgValue,
-    unit: "in4",
+    unit: U.section4,
     formula: "I_g = \\dfrac{h\\,\\ell_w^3}{12}",
-    substitution: `\\dfrac{${fmtTex(w.geometry.h, { dp: 1 })} \\times ${fmtTex(w.geometry.lw)}^3}{12} = ${fmtTex(IgValue)}\\ \\text{in}^4`,
+    substitution: `\\dfrac{${fmtTex(h.value, { dp: 1 })} \\times ${fmtTex(lw.value)}^3}{12} = ${fmtTex(IgValue)}\\ ${U.lengthTex}^4`,
     inputs: [h, lw],
   });
-  const yValue = w.geometry.lw / 2;
+  const yValue = lw.value / 2;
   const y = derive({
     id: `${NS_REQ}.y`,
     symbol: "y",
     label: "distance from the centroid to the extreme compression fiber",
     value: yValue,
-    unit: "in",
+    unit: U.length,
     formula: "y = \\ell_w/2",
-    substitution: `y = ${fmtTex(w.geometry.lw)}/2 = ${fmtTex(yValue, { dp: 1 })}\\ \\text{in.}`,
+    substitution: `y = ${fmtTex(lw.value)}/2 = ${fmtTex(yValue, { dp: 1 })}\\ ${lenTexOf(U)}`,
     inputs: [lw],
     note: "gross rectangular section: the extreme fiber is ℓ_w/2 from the centroid",
   });
@@ -159,34 +201,42 @@ export function sigmaExtreme(w: WallInput, demand: Demands): Traced {
     `${NS_REQ}.Pu_sigma`,
     "P_u",
     `factored axial force (${demand.label ?? demand.id})`,
-    demand.Pu,
-    "kip",
+    U.frc(demand.Pu),
+    U.force,
   );
   const Mu = input(
     `${NS_REQ}.Mu_sigma`,
     "M_u",
     `factored in-plane moment (${demand.label ?? demand.id})`,
-    Math.abs(demand.Mu),
-    "kip-ft",
+    U.mom(Math.abs(demand.Mu)),
+    U.moment,
   );
 
-  const PuLb = demand.Pu * 1000;
-  const MuLbIn = kipFtToKipIn(Math.abs(demand.Mu)) * 1000;
-  const axial = PuLb / ag.value;
-  const flex = (MuLbIn * yValue) / IgValue;
+  // The stress is formed in the base units of the edition:
+  //   in-lb — P_u in lb over A_g in in², M_u in lb-in. over I_g in in⁴ → psi
+  //   ACI 318M-19 18.10.6.3 — P_u in N over A_g in mm², M_u in N·mm over I_g in
+  //   mm⁴ → MPa (1 kN·m = 10⁶ N·mm).
+  const PuBase = U.si ? kipToKn(demand.Pu) * 1000 : demand.Pu * 1000;
+  const MuBase = U.si
+    ? kipFtToKnM(Math.abs(demand.Mu)) * 1e6
+    : kipFtToKipIn(Math.abs(demand.Mu)) * 1000;
+  const axial = PuBase / ag.value;
+  const flex = (MuBase * yValue) / IgValue;
   return derive({
     id: `${NS_REQ}.sigma`,
     symbol: "σ",
     label: "extreme-fiber compressive stress on the gross section",
     value: axial + flex,
-    unit: "psi",
+    unit: U.stress,
     formula: "\\sigma = \\dfrac{P_u}{A_g} + \\dfrac{M_u\\,y}{I_g}",
     substitution:
-      `\\dfrac{${fmtTex(PuLb)}}{${fmtTex(ag.value)}} + \\dfrac{${fmtTex(MuLbIn)} \\times ${fmtTex(yValue, { dp: 1 })}}{${fmtTex(IgValue)}} = ` +
-      `${fmtTex(axial)} + ${fmtTex(flex)} = ${fmtTex(axial + flex)}\\ \\text{psi}`,
+      `\\dfrac{${fmtTex(PuBase)}}{${fmtTex(ag.value)}} + \\dfrac{${fmtTex(MuBase)} \\times ${fmtTex(yValue, { dp: 1 })}}{${fmtTex(IgValue)}} = ` +
+      `${fmtTex(axial)} + ${fmtTex(flex)} = ${fmtTex(axial + flex)}\\ ${U.stressTex}`,
     ref: aci("18.10.6.3"),
     inputs: [Pu, ag, Mu, y, Ig],
-    note: "linear-elastic gross-section model including E (18.10.6.3); P_u in kip and M_u in kip-ft are converted to lb and lb-in. so the stress lands in psi",
+    note: U.si
+      ? "linear-elastic gross-section model including E (ACI 318M-19 18.10.6.3); P_u in kN and M_u in kN·m are converted to N and N·mm so the stress lands in MPa"
+      : "linear-elastic gross-section model including E (18.10.6.3); P_u in kip and M_u in kip-ft are converted to lb and lb-in. so the stress lands in psi",
   });
 }
 
@@ -214,6 +264,7 @@ function buildRequirement(w: WallInput, demand: Demands): SbeRequirement {
 }
 
 function displacementPath(w: WallInput, method: Traced<string>, cNode: Traced): SbeRequirement {
+  const U = schemeOf(w);
   const lw = lwInput(w);
   const hwcs = hwcsInput(w);
   const Cd = w.seismic?.Cd;
@@ -237,18 +288,18 @@ function displacementPath(w: WallInput, method: Traced<string>, cNode: Traced): 
       `${NS_REQ}.delta_e`,
       "δ_e",
       "elastic deflection at the top of the wall",
-      deltaE,
-      "in",
+      U.len(deltaE),
+      U.length,
     );
-    const deltaUValue = Cd * deltaE;
+    const deltaUValue = Cd * U.len(deltaE);
     deltaU = derive({
       id: `${NS_REQ}.delta_u`,
       symbol: "δ_u",
       label: "design displacement",
       value: deltaUValue,
-      unit: "in",
+      unit: U.length,
       formula: "\\delta_u = C_d\\,\\delta_e",
-      substitution: `${fmtTex(Cd, { dp: 2 })} \\times ${fmtTex(deltaE, { dp: 2 })} = ${fmtTex(deltaUValue, { dp: 2 })}\\ \\text{in.}`,
+      substitution: `${fmtTex(Cd, { dp: 2 })} \\times ${fmtTex(U.len(deltaE), { dp: 2 })} = ${fmtTex(deltaUValue, { dp: 2 })}\\ ${lenTexOf(U)}`,
       ref: aci("18.10.6.2"),
       inputs: [CdNode, deltaENode],
       note: "δ_u is the design displacement of ASCE 7, C_d δ_e",
@@ -257,10 +308,12 @@ function displacementPath(w: WallInput, method: Traced<string>, cNode: Traced): 
       id: `${NS_REQ}.drift_raw`,
       symbol: "δ_u/h_wcs",
       label: "computed design drift ratio",
-      value: deltaUValue / hwcsValue(w),
+      // δ_u/h_wcs is a ratio, identical in both editions; it is assembled from
+      // the already-converted leaves so the substitution reads consistently.
+      value: deltaUValue / hwcs.value,
       unit: "1",
       formula: "\\delta_u/h_{wcs}",
-      substitution: `${fmtTex(deltaUValue, { dp: 2 })} / ${fmtTex(hwcsValue(w))} = ${fmtTex(deltaUValue / hwcsValue(w), { dp: 5 })}`,
+      substitution: `${fmtTex(deltaUValue, { dp: 2 })} / ${fmtTex(hwcs.value)} = ${fmtTex(deltaUValue / hwcs.value, { dp: 5 })}`,
       ref: aci("18.10.6.2", "18.10.6.2a"),
       inputs: [deltaU, hwcs],
     });
@@ -315,7 +368,9 @@ function displacementPath(w: WallInput, method: Traced<string>, cNode: Traced): 
     "1",
     aci("18.10.6.2", "18.10.6.2a"),
   );
-  const rhsValue = w.geometry.lw / (600 * cNode.value);
+  // 18.10.6.2(a) is dimensionless and identical in ACI 318M-19 18.10.6.2(a);
+  // ℓ_w and c are both taken in the local system so the ratio is unchanged.
+  const rhsValue = lw.value / (600 * cNode.value);
   const rhs = derive({
     id: `${NS_REQ}.limit`,
     symbol: "ℓ_w/(600c)",
@@ -323,7 +378,7 @@ function displacementPath(w: WallInput, method: Traced<string>, cNode: Traced): 
     value: rhsValue,
     unit: "1",
     formula: "\\dfrac{\\ell_w}{600\\,c}",
-    substitution: `\\dfrac{${fmtTex(w.geometry.lw)}}{600 \\times ${fmtTex(cNode.value, { dp: 2 })}} = ${fmtTex(rhsValue, { dp: 5 })}`,
+    substitution: `\\dfrac{${fmtTex(lw.value)}}{600 \\times ${fmtTex(cNode.value, { dp: U.si ? 1 : 2 })}} = ${fmtTex(rhsValue, { dp: 5 })}`,
     ref: aci("18.10.6.2", "18.10.6.2a"),
     inputs: [lw, coeff, cNode],
   });
@@ -362,8 +417,12 @@ function stressPath(
   method: Traced<string>,
   cNode: Traced,
 ): SbeRequirement {
+  const U = schemeOf(w);
   const sigma = sigmaExtreme(w, demand);
-  const fcPsi = ksiToPsi(w.concrete.fc);
+  // The 0.2f'c trigger and 0.15f'c release of 18.10.6.3 are ratios of stresses
+  // and are unchanged in ACI 318M-19 18.10.6.3 — only the stress unit the nodes
+  // carry differs (psi / MPa).
+  const fcCode = U.str(w.concrete.fc);
 
   const limitCoeff = constant(
     `${NS_REQ}.sigma_coeff`,
@@ -377,12 +436,12 @@ function stressPath(
     id: `${NS_REQ}.sigma_limit`,
     symbol: "0.2f'_c",
     label: "stress at which a special boundary element is required",
-    value: 0.2 * fcPsi,
-    unit: "psi",
+    value: 0.2 * fcCode,
+    unit: U.stress,
     formula: "0.2\\,f'_c",
-    substitution: `0.2 \\times ${fmtTex(fcPsi)} = ${fmtTex(0.2 * fcPsi)}\\ \\text{psi}`,
+    substitution: `0.2 \\times ${fmtTex(fcCode)} = ${fmtTex(0.2 * fcCode)}\\ ${U.stressTex}`,
     ref: aci("18.10.6.3"),
-    inputs: [limitCoeff, fcInput(w.concrete)],
+    inputs: [limitCoeff, fcInput(w.concrete, U)],
   });
 
   const discCoeff = constant(
@@ -397,10 +456,10 @@ function stressPath(
     id: `${NS_REQ}.sigma_discontinue`,
     symbol: "0.15f'_c",
     label: "stress below which a special boundary element may be discontinued",
-    value: 0.15 * fcPsi,
-    unit: "psi",
+    value: 0.15 * fcCode,
+    unit: U.stress,
     formula: "0.15\\,f'_c",
-    substitution: `0.15 \\times ${fmtTex(fcPsi)} = ${fmtTex(0.15 * fcPsi)}\\ \\text{psi}`,
+    substitution: `0.15 \\times ${fmtTex(fcCode)} = ${fmtTex(0.15 * fcCode)}\\ ${U.stressTex}`,
     ref: aci("18.10.6.3"),
     inputs: [discCoeff, limit],
     note: "informational: boundary elements may be discontinued where the stress falls below 0.15f'c (18.10.6.3)",
@@ -496,23 +555,29 @@ export function checkSbeDetailing(w: WallInput, demand: Demands, ve: Traced): Ch
     });
   }
 
+  const U = schemeOf(w);
+  const lenWord = lenWordOf(U);
   const sbe = w.sbe;
   const lw = lwInput(w);
   const c = req.cNode;
   const subs: SubCheck[] = [];
 
-  const b = input(`${NS}.b`, "b", "provided SBE width", sbe.width, "in");
-  const lbe = input(`${NS}.l_be`, "ℓ_be", "provided SBE length", sbe.length, "in");
+  // Every length in this graph is carried in the local system (in / mm), so the
+  // soft-converted limits of ACI 318M-19 18.10.6.4 can be compared directly.
+  const bValue = U.len(sbe.width);
+  const lbeValue = U.len(sbe.length);
+  const b = input(`${NS}.b`, "b", "provided SBE width", bValue, U.length);
+  const lbe = input(`${NS}.l_be`, "ℓ_be", "provided SBE length", lbeValue, U.length);
 
   // --- (a) horizontal length ------------------------------------------------
   const cMinus = derive({
     id: `${NS}.c_minus_01lw`,
     symbol: "c − 0.1ℓ_w",
     label: "first length requirement",
-    value: c.value - 0.1 * w.geometry.lw,
-    unit: "in",
+    value: c.value - 0.1 * lw.value,
+    unit: U.length,
     formula: "c - 0.1\\,\\ell_w",
-    substitution: `${fmtTex(c.value, { dp: 2 })} - 0.1 \\times ${fmtTex(w.geometry.lw)} = ${fmtTex(c.value - 0.1 * w.geometry.lw, { dp: 2 })}\\ \\text{in.}`,
+    substitution: `${fmtTex(c.value, { dp: 2 })} - 0.1 \\times ${fmtTex(lw.value)} = ${fmtTex(c.value - 0.1 * lw.value, { dp: 2 })}\\ ${lenTexOf(U)}`,
     ref: aci("18.10.6.4", "18.10.6.4a"),
     inputs: [c, lw],
   });
@@ -521,9 +586,9 @@ export function checkSbeDetailing(w: WallInput, demand: Demands, ve: Traced): Ch
     symbol: "c/2",
     label: "second length requirement",
     value: c.value / 2,
-    unit: "in",
+    unit: U.length,
     formula: "c/2",
-    substitution: `${fmtTex(c.value, { dp: 2 })}/2 = ${fmtTex(c.value / 2, { dp: 2 })}\\ \\text{in.}`,
+    substitution: `${fmtTex(c.value, { dp: 2 })}/2 = ${fmtTex(c.value / 2, { dp: 2 })}\\ ${lenTexOf(U)}`,
     ref: aci("18.10.6.4", "18.10.6.4a"),
     inputs: [c],
   });
@@ -533,9 +598,9 @@ export function checkSbeDetailing(w: WallInput, demand: Demands, ve: Traced): Ch
     symbol: "ℓ_be,min",
     label: "required SBE length from the extreme compression fiber",
     value: lengthReqValue,
-    unit: "in",
+    unit: U.length,
     formula: "\\ell_{be} \\ge \\max\\left(c - 0.1\\ell_w,\\ c/2\\right)",
-    substitution: `\\max(${fmtTex(cMinus.value, { dp: 2 })},\\ ${fmtTex(cHalf.value, { dp: 2 })}) = ${fmtTex(lengthReqValue, { dp: 2 })}\\ \\text{in.}`,
+    substitution: `\\max(${fmtTex(cMinus.value, { dp: 2 })},\\ ${fmtTex(cHalf.value, { dp: 2 })}) = ${fmtTex(lengthReqValue, { dp: 2 })}\\ ${lenTexOf(U)}`,
     ref: aci("18.10.6.4", "18.10.6.4a"),
     inputs: [cMinus, cHalf],
   });
@@ -552,50 +617,54 @@ export function checkSbeDetailing(w: WallInput, demand: Demands, ve: Traced): Ch
   );
 
   // --- (b) width: 18.10.6.2(b)(ii) √-path or (iii) drift-capacity path -------
-  const width = widthPaths(w, sbe.width, req, ve, b, c);
+  const width = widthPaths(w, bValue, req, ve, b, c);
   subs.push({ node: width.node, util: width.util });
 
   // --- 18.10.6.4(b) b ≥ h_u/16 ---------------------------------------------
+  // b ≥ h_u/16 is a ratio of lengths and is identical in ACI 318M-19 18.10.6.4(b).
   const hu = huInput(w);
   const huReq = derive({
     id: `${NS}.b_hu16_req`,
     symbol: "h_u/16",
     label: "minimum SBE width from the unsupported height",
-    value: huValue(w) / 16,
-    unit: "in",
+    value: hu.value / 16,
+    unit: U.length,
     formula: "b \\ge h_u/16",
-    substitution: `${fmtTex(huValue(w))}/16 = ${fmtTex(huValue(w) / 16, { dp: 2 })}\\ \\text{in.}`,
+    substitution: `${fmtTex(hu.value)}/16 = ${fmtTex(hu.value / 16, { dp: 2 })}\\ ${lenTexOf(U)}`,
     ref: aci("18.10.6.4", "18.10.6.4b"),
     inputs: [hu],
   });
   subs.push(ratioNode("b_hu16", "(h_u/16)/b", "SBE width utilization (h_u/16)", huReq, b, "18.10.6.4"));
 
-  // --- 18.10.6.4(c) 12 in. floor for c/ℓ_w ≥ 3/8 ---------------------------
+  // --- 18.10.6.4(c) 12 in. / 300 mm floor for c/ℓ_w ≥ 3/8 ------------------
   const cOverLw = derive({
     id: `${NS}.c_over_lw`,
     symbol: "c/ℓ_w",
     label: "neutral axis depth ratio",
-    value: c.value / w.geometry.lw,
+    value: c.value / lw.value,
     unit: "1",
     formula: "c/\\ell_w",
-    substitution: `${fmtTex(c.value, { dp: 2 })} / ${fmtTex(w.geometry.lw)} = ${fmtTex(c.value / w.geometry.lw, { dp: 3 })}`,
+    substitution: `${fmtTex(c.value, { dp: 2 })} / ${fmtTex(lw.value)} = ${fmtTex(c.value / lw.value, { dp: 3 })}`,
     ref: aci("18.10.6.4", "18.10.6.4c"),
     inputs: [c, lw],
   });
-  const applies12 = c.value / w.geometry.lw >= 3 / 8 - TOL;
+  const applies12 = c.value / lw.value >= 3 / 8 - TOL;
+  // 18.10.6.4(c) b ≥ 12 in.; ACI 318M-19 18.10.6.4(c) soft-converts it to 300 mm.
+  const bFloor = U.si ? 300 : 12;
+  const bFloorTex = `${fmtTex(bFloor)}\\ ${lenTexOf(U)}`;
   const floor12 = derive({
     id: `${NS}.b_12_util`,
-    symbol: "12 in./b",
-    label: "SBE width utilization (12 in. floor)",
-    value: applies12 ? 12 / sbe.width : 0,
+    symbol: U.si ? "300 mm/b" : "12 in./b",
+    label: U.si ? "SBE width utilization (300 mm floor)" : "SBE width utilization (12 in. floor)",
+    value: applies12 ? bFloor / bValue : 0,
     unit: "1",
-    formula: "b \\ge 12\\ \\text{in.} \\quad (c/\\ell_w \\ge 3/8)",
+    formula: `b \\ge ${bFloorTex} \\quad (c/\\ell_w \\ge 3/8)`,
     substitution: applies12
-      ? `12 / ${fmtTex(sbe.width, { dp: 1 })} = ${fmtTex(12 / sbe.width, { dp: 3 })}`
-      : `c/\\ell_w = ${fmtTex(c.value / w.geometry.lw, { dp: 3 })} < 3/8 \\Rightarrow \\text{does not apply}`,
+      ? `${fmtTex(bFloor)} / ${fmtTex(bValue, { dp: 1 })} = ${fmtTex(bFloor / bValue, { dp: 3 })}`
+      : `c/\\ell_w = ${fmtTex(c.value / lw.value, { dp: 3 })} < 3/8 \\Rightarrow \\text{does not apply}`,
     ref: aci("18.10.6.4", "18.10.6.4c"),
     inputs: [cOverLw, b],
-    status: applies12 ? (sbe.width >= 12 - TOL ? "ok" : "ng") : "na",
+    status: applies12 ? (bValue >= bFloor - TOL ? "ok" : "ng") : "na",
     note: applies12
       ? "18.10.6.4(c): h_w/ℓ_w ≥ 2.0, continuous wall with a single critical section, c/ℓ_w ≥ 3/8"
       : "18.10.6.4(c) applies only where c/ℓ_w ≥ 3/8",
@@ -606,23 +675,34 @@ export function checkSbeDetailing(w: WallInput, demand: Demands, ve: Traced): Ch
   subs.push({ node: verticalExtent(w, demand) });
 
   // --- (f) h_x -------------------------------------------------------------
-  const hx = input(`${NS}.hx`, "h_x", "provided spacing of laterally supported bars", sbe.hx, "in");
+  // 18.10.6.4(f) caps h_x at 14 in.; ACI 318M-19 18.10.6.4(f) soft-converts the
+  // cap to 350 mm. The (2/3)b companion limit is a ratio and is unchanged.
+  const hxValue = U.len(sbe.hx);
+  const hxCapValue = U.si ? 350 : 14;
+  const hxCapTex = `${fmtTex(hxCapValue)}\\ ${lenTexOf(U)}`;
+  const hx = input(
+    `${NS}.hx`,
+    "h_x",
+    "provided spacing of laterally supported bars",
+    hxValue,
+    U.length,
+  );
   const hx14 = constant(
     `${NS}.hx_cap`,
-    "14 in.",
+    U.si ? "350 mm" : "14 in.",
     "absolute limit on h_x",
-    14,
-    "in",
+    hxCapValue,
+    U.length,
     aci("18.10.6.4", "18.10.6.4f"),
   );
   const hxTwoThirds = derive({
     id: `${NS}.hx_two_thirds_b`,
     symbol: "(2/3)b",
     label: "width-based limit on h_x",
-    value: (2 / 3) * sbe.width,
-    unit: "in",
+    value: (2 / 3) * bValue,
+    unit: U.length,
     formula: "\\tfrac{2}{3}\\,b",
-    substitution: `\\tfrac{2}{3} \\times ${fmtTex(sbe.width, { dp: 1 })} = ${fmtTex((2 / 3) * sbe.width, { dp: 2 })}\\ \\text{in.}`,
+    substitution: `\\tfrac{2}{3} \\times ${fmtTex(bValue, { dp: 1 })} = ${fmtTex((2 / 3) * bValue, { dp: 2 })}\\ ${lenTexOf(U)}`,
     ref: aci("18.10.6.4", "18.10.6.4f"),
     inputs: [b],
   });
@@ -630,61 +710,81 @@ export function checkSbeDetailing(w: WallInput, demand: Demands, ve: Traced): Ch
     id: `${NS}.hx_max`,
     symbol: "h_x,max",
     label: "maximum spacing of laterally supported longitudinal bars",
-    value: Math.min(14, (2 / 3) * sbe.width),
-    unit: "in",
-    formula: "h_x \\le \\min\\left(14\\ \\text{in.},\\ \\tfrac{2}{3}b\\right)",
-    substitution: `\\min(14,\\ ${fmtTex((2 / 3) * sbe.width, { dp: 2 })}) = ${fmtTex(Math.min(14, (2 / 3) * sbe.width), { dp: 2 })}\\ \\text{in.}`,
+    value: Math.min(hxCapValue, (2 / 3) * bValue),
+    unit: U.length,
+    formula: `h_x \\le \\min\\left(${hxCapTex},\\ \\tfrac{2}{3}b\\right)`,
+    substitution: `\\min(${fmtTex(hxCapValue)},\\ ${fmtTex((2 / 3) * bValue, { dp: 2 })}) = ${fmtTex(Math.min(hxCapValue, (2 / 3) * bValue), { dp: 2 })}\\ ${lenTexOf(U)}`,
     ref: aci("18.10.6.4", "18.10.6.4f"),
     inputs: [hx14, hxTwoThirds],
   });
   subs.push(ratioNode("hx", "h_x/h_x,max", "h_x utilization", hx, hxMax, "18.10.6.4", undefined, true));
 
   // --- (e)/(g) tie spacing --------------------------------------------------
-  const soRaw = 4 + (14 - sbe.hx) / 3;
-  const soValue = Math.min(6, Math.max(4, soRaw));
+  // 18.7.5.3: s_o = 4 + (14 − h_x)/3 with 4 in. ≤ s_o ≤ 6 in.; ACI 318M-19
+  // 18.7.5.3 soft-converts every term — s_o = 100 + (350 − h_x)/3 with
+  // 100 mm ≤ s_o ≤ 150 mm.
+  const soBase = U.si ? 100 : 4;
+  const soLo = soBase;
+  const soHi = U.si ? 150 : 6;
+  const soNum = hxCapValue;
+  const soBaseTex = fmtTex(soBase);
+  const soLoTex = `${fmtTex(soLo)}\\ ${lenTexOf(U)}`;
+  const soHiTex = `${fmtTex(soHi)}\\ ${lenTexOf(U)}`;
+  const soRaw = soBase + (soNum - hxValue) / 3;
+  const soValue = Math.min(soHi, Math.max(soLo, soRaw));
   const so = derive({
     id: `${NS}.so`,
     symbol: "s_o",
     label: "spacing term of 18.7.5.3",
     value: soValue,
-    unit: "in",
-    formula: "s_o = 4 + \\dfrac{14 - h_x}{3},\\quad 4\\ \\text{in.} \\le s_o \\le 6\\ \\text{in.}",
-    substitution: `4 + \\dfrac{14 - ${fmtTex(sbe.hx, { dp: 1 })}}{3} = ${fmtTex(soRaw, { dp: 2 })} \\Rightarrow s_o = ${fmtTex(soValue, { dp: 2 })}\\ \\text{in.}`,
+    unit: U.length,
+    formula: `s_o = ${soBaseTex} + \\dfrac{${fmtTex(soNum)} - h_x}{3},\\quad ${soLoTex} \\le s_o \\le ${soHiTex}`,
+    substitution: `${soBaseTex} + \\dfrac{${fmtTex(soNum)} - ${fmtTex(hxValue, { dp: 1 })}}{3} = ${fmtTex(soRaw, { dp: 2 })} \\Rightarrow s_o = ${fmtTex(soValue, { dp: 2 })}\\ ${lenTexOf(U)}`,
     ref: aci("18.7.5.3", "18.7.5.3"),
     inputs: [hx],
+    // The bounds are whole numbers in both editions (4/6 in., 100/150 mm), so
+    // they render without decimals — the in-lb note must stay "6 in.", not "6.00 in.".
     note:
-      soRaw > 6
-        ? "clamped to the 6 in. upper bound"
-        : soRaw < 4
-          ? "clamped to the 4 in. lower bound"
-          : "within the 4–6 in. range",
+      soRaw > soHi
+        ? `clamped to the ${fmtTex(soHi, { dp: 0 })} ${lenWord} upper bound`
+        : soRaw < soLo
+          ? `clamped to the ${fmtTex(soLo, { dp: 0 })} ${lenWord} lower bound`
+          : `within the ${fmtTex(soLo, { dp: 0 })}–${fmtTex(soHi, { dp: 0 })} ${lenWord} range`,
   });
 
-  const leastDim = Math.min(sbe.width, sbe.length);
+  const leastDim = Math.min(bValue, lbeValue);
   const thirdDim = derive({
     id: `${NS}.least_dim_3`,
     symbol: "b_min/3",
     label: "one-third of the least SBE dimension",
     value: leastDim / 3,
-    unit: "in",
+    unit: U.length,
     formula: "\\min(b,\\ \\ell_{be})/3",
-    substitution: `\\min(${fmtTex(sbe.width, { dp: 1 })},\\ ${fmtTex(sbe.length, { dp: 1 })})/3 = ${fmtTex(leastDim / 3, { dp: 2 })}\\ \\text{in.}`,
+    substitution: `\\min(${fmtTex(bValue, { dp: 1 })},\\ ${fmtTex(lbeValue, { dp: 1 })})/3 = ${fmtTex(leastDim / 3, { dp: 2 })}\\ ${lenTexOf(U)}`,
     ref: aci("18.10.6.4", "18.10.6.4e"),
     inputs: [b, lbe],
     note: "18.10.6.4(e) replaces the 18.7.5.3(a) column limit with one-third of the least boundary element dimension",
   });
-  const dbLong = BARS[sbe.longBar].db;
+  // 18.7.5.3(b) 6d_b is a multiple of a bar diameter — identical in ACI 318M-19
+  // 18.7.5.3(b); only the diameter's unit changes.
+  const dbLong = U.len(BARS[sbe.longBar].db);
   const sixDb = derive({
     id: `${NS}.six_db`,
     symbol: "6d_b",
     label: "six longitudinal bar diameters",
     value: 6 * dbLong,
-    unit: "in",
+    unit: U.length,
     formula: "6\\,d_b",
-    substitution: `6 \\times ${fmtTex(dbLong, { dp: 3 })} = ${fmtTex(6 * dbLong, { dp: 2 })}\\ \\text{in.}`,
+    substitution: `6 \\times ${fmtTex(dbLong, { dp: 3 })} = ${fmtTex(6 * dbLong, { dp: 2 })}\\ ${lenTexOf(U)}`,
     ref: aci("18.7.5.3", "18.7.5.3b"),
     inputs: [
-      input(`${NS}.db_long`, "d_b", `diameter of the SBE longitudinal bar (No. ${sbe.longBar})`, dbLong, "in"),
+      input(
+        `${NS}.db_long`,
+        "d_b",
+        `diameter of the SBE longitudinal bar (No. ${sbe.longBar})`,
+        dbLong,
+        U.length,
+      ),
     ],
   });
   const sReqValue = Math.min(thirdDim.value, sixDb.value, soValue);
@@ -693,13 +793,13 @@ export function checkSbeDetailing(w: WallInput, demand: Demands, ve: Traced): Ch
     symbol: "s_max",
     label: "maximum vertical spacing of SBE transverse reinforcement",
     value: sReqValue,
-    unit: "in",
+    unit: U.length,
     formula: "s \\le \\min\\left(b_{min}/3,\\ 6d_b,\\ s_o\\right)",
-    substitution: `\\min(${fmtTex(thirdDim.value, { dp: 2 })},\\ ${fmtTex(sixDb.value, { dp: 2 })},\\ ${fmtTex(soValue, { dp: 2 })}) = ${fmtTex(sReqValue, { dp: 2 })}\\ \\text{in.}`,
+    substitution: `\\min(${fmtTex(thirdDim.value, { dp: 2 })},\\ ${fmtTex(sixDb.value, { dp: 2 })},\\ ${fmtTex(soValue, { dp: 2 })}) = ${fmtTex(sReqValue, { dp: 2 })}\\ ${lenTexOf(U)}`,
     ref: aci("18.10.6.4", "18.10.6.4e"),
     inputs: [thirdDim, sixDb, so],
   });
-  const sProv = input(`${NS}.s_prov`, "s", "provided tie spacing", sbe.tieSpacing, "in");
+  const sProv = input(`${NS}.s_prov`, "s", "provided tie spacing", U.len(sbe.tieSpacing), U.length);
   subs.push(ratioNode("s", "s/s_max", "tie spacing utilization", sProv, sReq, "18.10.6.4", undefined, true));
 
   // --- (g) confinement amount ----------------------------------------------
@@ -789,6 +889,7 @@ function widthPaths(
   b: Traced,
   c: Traced,
 ): WidthResult {
+  const U = schemeOf(w);
   const lw = lwInput(w);
 
   const coeff = constant(
@@ -799,15 +900,19 @@ function widthPaths(
     "1",
     aci("18.10.6.2", "18.10.6.2b"),
   );
-  const sqrtReqValue = Math.sqrt(0.025 * c.value * w.geometry.lw);
+  // 18.10.6.2(b)(ii) b ≥ √(0.025 c ℓ_w) is written identically in ACI 318M-19
+  // 18.10.6.2(b)(ii). The root mixes two lengths, so it is a length only when c
+  // and ℓ_w are taken in the same unit as b — it is evaluated in mm in SI, never
+  // by converting an inch result.
+  const sqrtReqValue = Math.sqrt(0.025 * c.value * lw.value);
   const sqrtReq = derive({
     id: `${NS}.b_sqrt_req`,
     symbol: "√(0.025cℓ_w)",
     label: "SBE width required by 18.10.6.2(b)(ii)",
     value: sqrtReqValue,
-    unit: "in",
+    unit: U.length,
     formula: "b \\ge \\sqrt{0.025\\,c\\,\\ell_w}",
-    substitution: `\\sqrt{0.025 \\times ${fmtTex(c.value, { dp: 2 })} \\times ${fmtTex(w.geometry.lw)}} = ${fmtTex(sqrtReqValue, { dp: 2 })}\\ \\text{in.}`,
+    substitution: `\\sqrt{0.025 \\times ${fmtTex(c.value, { dp: 2 })} \\times ${fmtTex(lw.value)}} = ${fmtTex(sqrtReqValue, { dp: 2 })}\\ ${lenTexOf(U)}`,
     ref: aci("18.10.6.2", "18.10.6.2b"),
     inputs: [coeff, c, lw],
   });
@@ -882,18 +987,33 @@ function widthPaths(
 }
 
 export interface DriftCapacityArgs {
-  /** wall length, in */
+  /** wall length, in | mm */
   lw: number;
-  /** width of the flexural compression zone, in */
+  /** width of the flexural compression zone, in | mm */
   b: number;
-  /** neutral axis depth, in */
+  /** neutral axis depth, in | mm */
   c: number;
-  /** amplified design shear V_e, kip */
+  /** amplified design shear V_e, kip | kN */
   Ve: number;
-  /** √f'c, psi^0.5 */
+  /** √f'c, psi^0.5 | MPa^0.5 */
   sqrtFc: number;
-  /** gross shear area, in² */
+  /** gross shear area, in² | mm² */
   Acv: number;
+  /**
+   * true when every argument is in the metric system, selecting the ACI 318M-19
+   * 18.10.6.2(b) form of the shear normalizing term. Defaults to false so the
+   * in-lb call sites (and the web drift panel) are unaffected.
+   */
+  si?: boolean;
+}
+
+/**
+ * The coefficient on √f'c·A_cv in the shear term of Eq. (18.10.6.2b):
+ *   in-lb                    — 8√f'c·A_cv (psi, in² → lb, /1000 → kip)
+ *   ACI 318M-19 18.10.6.2(b) — 0.66√f'c·A_cv (MPa, mm² → N, /1000 → kN)
+ */
+function driftShearCoeff(si: boolean): number {
+  return si ? 0.66 : 8;
 }
 
 /**
@@ -902,41 +1022,49 @@ export interface DriftCapacityArgs {
  *
  *   δ_c/h_wcs = (1/100)[4 − (1/50)(ℓ_w/b)(c/b) − V_e/(8√f'c A_cv)]
  *
- * V_e is in kip and the normalizing term is evaluated in kip, so the ratio is
+ * with the 8 replaced by 0.66 in ACI 318M-19 18.10.6.2(b). V_e is in kip (kN)
+ * and the normalizing term is evaluated in kip (kN), so the ratio is
  * dimensionless either way.
  */
 export function driftCapacityRatio(args: DriftCapacityArgs): number {
-  const shearCap = (8 * args.sqrtFc * args.Acv) / 1000;
+  const shearCap = (driftShearCoeff(args.si === true) * args.sqrtFc * args.Acv) / 1000;
   return (1 / 100) * (4 - (1 / 50) * (args.lw / args.b) * (args.c / args.b) - args.Ve / shearCap);
 }
 
 /** Eq. (18.10.6.2b), with the 0.015 floor on the computed capacity. */
 function driftCapacityNode(w: WallInput, bValue: number, ve: Traced, b: Traced, c: Traced): Traced {
+  const U = schemeOf(w);
   const lw = lwInput(w);
   const acv = Acv(w);
-  const sqrt = sqrtFcNode(w, NS);
-  const shearCapValue = (8 * sqrt.value * acv.value) / 1000;
+  const sqrt = sqrtFcLocal(w, U);
+  // 18.10.6.2(b): V_e/(8√f'c·A_cv) in psi/in²; ACI 318M-19 18.10.6.2(b) prints
+  // the same equation with 0.66√f'c·A_cv in MPa/mm².
+  const shearCoeff = driftShearCoeff(U.si);
+  const shearCoeffTex = U.si ? "0.66" : "8";
+  const shearCapValue = (shearCoeff * sqrt.value * acv.value) / 1000;
   const shearCap = derive({
     id: `${NS}.drift_shear_cap`,
-    symbol: "8√f'_c·A_cv",
+    symbol: `${shearCoeffTex}√f'_c·A_cv`,
     label: "shear normalizing term of Eq. (18.10.6.2b)",
     value: shearCapValue,
-    unit: "kip",
-    formula: "8\\sqrt{f'_c}\\,A_{cv}",
-    substitution: `8 \\times ${fmtTex(sqrt.value, { dp: 1 })} \\times ${fmtTex(acv.value)} = ${fmtTex(shearCapValue)}\\ \\text{kip}`,
+    unit: U.force,
+    formula: `${shearCoeffTex}\\sqrt{f'_c}\\,A_{cv}`,
+    substitution: `${shearCoeffTex} \\times ${fmtTex(sqrt.value, { dp: U.si ? 3 : 1 })} \\times ${fmtTex(acv.value)} = ${fmtTex(shearCapValue)}\\ ${U.forceTex}`,
     ref: aci("18.10.6.2", "18.10.6.2b"),
     inputs: [sqrt, acv],
+    note: U.si ? "MPa × mm² → N, reported in kN" : "psi × in² → lb, reported in kip",
   });
 
-  const geomTerm = (1 / 50) * (w.geometry.lw / bValue) * (c.value / bValue);
+  const geomTerm = (1 / 50) * (lw.value / bValue) * (c.value / bValue);
   const shearTerm = ve.value / shearCapValue;
   const rawValue = driftCapacityRatio({
-    lw: w.geometry.lw,
+    lw: lw.value,
     b: bValue,
     c: c.value,
     Ve: ve.value,
     sqrtFc: sqrt.value,
     Acv: acv.value,
+    si: U.si,
   });
   const raw = derive({
     id: `${NS}.drift_capacity_raw`,
@@ -944,10 +1072,9 @@ function driftCapacityNode(w: WallInput, bValue: number, ve: Traced, b: Traced, 
     label: "computed drift capacity",
     value: rawValue,
     unit: "1",
-    formula:
-      "\\dfrac{\\delta_c}{h_{wcs}} = \\dfrac{1}{100}\\left[4 - \\dfrac{1}{50}\\dfrac{\\ell_w}{b}\\dfrac{c}{b} - \\dfrac{V_e}{8\\sqrt{f'_c}A_{cv}}\\right]",
+    formula: `\\dfrac{\\delta_c}{h_{wcs}} = \\dfrac{1}{100}\\left[4 - \\dfrac{1}{50}\\dfrac{\\ell_w}{b}\\dfrac{c}{b} - \\dfrac{V_e}{${shearCoeffTex}\\sqrt{f'_c}A_{cv}}\\right]`,
     substitution:
-      `\\dfrac{1}{100}\\left[4 - \\dfrac{1}{50}\\dfrac{${fmtTex(w.geometry.lw)}}{${fmtTex(bValue, { dp: 1 })}}\\dfrac{${fmtTex(c.value, { dp: 2 })}}{${fmtTex(bValue, { dp: 1 })}} - ` +
+      `\\dfrac{1}{100}\\left[4 - \\dfrac{1}{50}\\dfrac{${fmtTex(lw.value)}}{${fmtTex(bValue, { dp: 1 })}}\\dfrac{${fmtTex(c.value, { dp: 2 })}}{${fmtTex(bValue, { dp: 1 })}} - ` +
       `\\dfrac{${fmtTex(ve.value)}}{${fmtTex(shearCapValue)}}\\right] = \\dfrac{1}{100}\\left[4 - ${fmtTex(geomTerm, { dp: 3 })} - ${fmtTex(shearTerm, { dp: 3 })}\\right] = ${fmtTex(rawValue, { dp: 5 })}`,
     ref: aci("18.10.6.2", "18.10.6.2b"),
     inputs: [lw, b, c, ve, shearCap],
@@ -979,45 +1106,50 @@ function driftCapacityNode(w: WallInput, bValue: number, ve: Traced, b: Traced, 
 
 /** 18.10.6.2(b)(i) / 18.10.6.4(a): vertical extent above and below the section. */
 function verticalExtent(w: WallInput, demand: Demands): Traced {
+  const U = schemeOf(w);
   const lw = lwInput(w);
   const Mu = Math.abs(demand.Mu);
   const Vu = Math.abs(demand.Vu);
-  const MuOver4Vu = Vu > 0 ? kipFtToKipIn(Mu) / (4 * Vu) : Number.POSITIVE_INFINITY;
+  // M_u/(4V_u) is a length: kip-in./kip → in., and kN·mm/kN → mm in ACI 318M-19
+  // 18.10.6.2(b)(i), so the moment is expressed per millimetre in SI.
+  const MuLen = U.si ? kipFtToKnM(Mu) * 1000 : kipFtToKipIn(Mu);
+  const VuLocal = U.frc(Vu);
+  const MuOver4Vu = Vu > 0 ? MuLen / (4 * VuLocal) : Number.POSITIVE_INFINITY;
   const MuNode = input(
     `${NS}.extent_Mu`,
     "M_u",
     `factored in-plane moment (${demand.label ?? demand.id})`,
-    Mu,
-    "kip-ft",
+    U.mom(Mu),
+    U.moment,
   );
   const VuNode = input(
     `${NS}.extent_Vu`,
     "V_u",
     `factored in-plane shear (${demand.label ?? demand.id})`,
-    Vu,
-    "kip",
+    VuLocal,
+    U.force,
   );
   const term = derive({
     id: `${NS}.extent_mu_4vu`,
     symbol: "M_u/(4V_u)",
     label: "moment-to-shear extent term",
     value: MuOver4Vu,
-    unit: "in",
+    unit: U.length,
     formula: "\\dfrac{M_u}{4V_u}",
-    substitution: `\\dfrac{${fmtTex(kipFtToKipIn(Mu))}}{4 \\times ${fmtTex(Vu)}} = ${fmtTex(MuOver4Vu, { dp: 1 })}\\ \\text{in.}`,
+    substitution: `\\dfrac{${fmtTex(MuLen)}}{4 \\times ${fmtTex(VuLocal)}} = ${fmtTex(MuOver4Vu, { dp: 1 })}\\ ${lenTexOf(U)}`,
     ref: aci("18.10.6.2", "18.10.6.2b"),
     inputs: [MuNode, VuNode],
-    note: "M_u in kip-ft is converted to kip-in.",
+    note: U.si ? "M_u in kN·m is converted to kN·mm" : "M_u in kip-ft is converted to kip-in.",
   });
-  const value = Math.max(w.geometry.lw, MuOver4Vu);
+  const value = Math.max(lw.value, MuOver4Vu);
   return derive({
     id: `${NS}.extent_req`,
     symbol: "extent",
     label: "required vertical extent of SBE transverse reinforcement",
     value,
-    unit: "in",
+    unit: U.length,
     formula: "\\text{extent} \\ge \\max\\left(\\ell_w,\\ \\dfrac{M_u}{4V_u}\\right)",
-    substitution: `\\max(${fmtTex(w.geometry.lw)},\\ ${fmtTex(MuOver4Vu, { dp: 1 })}) = ${fmtTex(value, { dp: 1 })}\\ \\text{in.}`,
+    substitution: `\\max(${fmtTex(lw.value)},\\ ${fmtTex(MuOver4Vu, { dp: 1 })}) = ${fmtTex(value, { dp: 1 })}\\ ${lenTexOf(U)}`,
     ref: aci("18.10.6.2", "18.10.6.2b"),
     inputs: [lw, term],
     note: "informational: this engine checks one section, not a height range — the SBE transverse reinforcement must extend this far above (and below, into the support per 18.10.6.4(j)) the critical section",
@@ -1043,41 +1175,48 @@ function ashCheck(
   lbe: Traced,
   sProv: Traced,
 ): SubCheck {
-  const AgBeValue = sbe.width * sbe.length;
+  // Table 18.10.6.4(g) is a set of dimensionless ratios and is printed
+  // identically in ACI 318M-19 Table 18.10.6.4(g); only the units its A_g/A_ch,
+  // b_c and f'c/f_yt leaves carry change (mm², mm, MPa).
+  const U = schemeOf(w);
+  const bValue = U.len(sbe.width);
+  const lbeValue = U.len(sbe.length);
+  const coverValue = U.len(w.geometry.cover);
+  const AgBeValue = bValue * lbeValue;
   const AgBe = derive({
     id: `${NS}.Ag_be`,
     symbol: "A_g,be",
     label: "gross area of the boundary element",
     value: AgBeValue,
-    unit: "in2",
+    unit: U.area,
     formula: "A_{g,be} = b\\,\\ell_{be}",
-    substitution: `${fmtTex(sbe.width, { dp: 1 })} \\times ${fmtTex(sbe.length, { dp: 1 })} = ${fmtTex(AgBeValue)}\\ \\text{in}^2`,
+    substitution: `${fmtTex(bValue, { dp: 1 })} \\times ${fmtTex(lbeValue, { dp: 1 })} = ${fmtTex(AgBeValue)}\\ ${U.areaTex}`,
     ref: aci("18.10.6.4", "Table 18.10.6.4(g)"),
     inputs: [b, lbe],
   });
 
-  const cover = input(`${NS}.cover`, "c_c", "clear cover to the hoops", w.geometry.cover, "in");
-  const bc1Value = sbe.width - 2 * w.geometry.cover;
+  const cover = input(`${NS}.cover`, "c_c", "clear cover to the hoops", coverValue, U.length);
+  const bc1Value = bValue - 2 * coverValue;
   const bc1 = derive({
     id: `${NS}.bc1`,
     symbol: "b_c1",
     label: "core dimension across the SBE width, to the outside of the hoops",
     value: bc1Value,
-    unit: "in",
+    unit: U.length,
     formula: "b_{c1} = b - 2c_c",
-    substitution: `${fmtTex(sbe.width, { dp: 1 })} - 2 \\times ${fmtTex(w.geometry.cover, { dp: 2 })} = ${fmtTex(bc1Value, { dp: 1 })}\\ \\text{in.}`,
+    substitution: `${fmtTex(bValue, { dp: 1 })} - 2 \\times ${fmtTex(coverValue, { dp: 2 })} = ${fmtTex(bc1Value, { dp: 1 })}\\ ${lenTexOf(U)}`,
     ref: aci("18.10.6.4", "Table 18.10.6.4(g)"),
     inputs: [b, cover],
   });
-  const bc2Value = sbe.length - 2 * w.geometry.cover;
+  const bc2Value = lbeValue - 2 * coverValue;
   const bc2 = derive({
     id: `${NS}.bc2`,
     symbol: "b_c2",
     label: "core dimension along the SBE length, to the outside of the hoops",
     value: bc2Value,
-    unit: "in",
+    unit: U.length,
     formula: "b_{c2} = \\ell_{be} - 2c_c",
-    substitution: `${fmtTex(sbe.length, { dp: 1 })} - 2 \\times ${fmtTex(w.geometry.cover, { dp: 2 })} = ${fmtTex(bc2Value, { dp: 1 })}\\ \\text{in.}`,
+    substitution: `${fmtTex(lbeValue, { dp: 1 })} - 2 \\times ${fmtTex(coverValue, { dp: 2 })} = ${fmtTex(bc2Value, { dp: 1 })}\\ ${lenTexOf(U)}`,
     ref: aci("18.10.6.4", "Table 18.10.6.4(g)"),
     inputs: [lbe, cover],
   });
@@ -1087,18 +1226,24 @@ function ashCheck(
     symbol: "A_ch",
     label: "core area measured to the outside of the hoops",
     value: AchValue,
-    unit: "in2",
+    unit: U.area,
     formula: "A_{ch} = b_{c1}\\,b_{c2}",
-    substitution: `${fmtTex(bc1Value, { dp: 1 })} \\times ${fmtTex(bc2Value, { dp: 1 })} = ${fmtTex(AchValue)}\\ \\text{in}^2`,
+    substitution: `${fmtTex(bc1Value, { dp: 1 })} \\times ${fmtTex(bc2Value, { dp: 1 })} = ${fmtTex(AchValue)}\\ ${U.areaTex}`,
     ref: aci("18.10.6.4", "Table 18.10.6.4(g)"),
     inputs: [bc1, bc2],
   });
 
-  const fcPsi = ksiToPsi(w.concrete.fc);
-  const fytPsi = ksiToPsi(w.grade.fy);
-  const fyt = input(`${NS}.fyt`, "f_yt", "yield strength of the transverse reinforcement", fytPsi, "psi");
-  const termA = 0.3 * (AgBeValue / AchValue - 1) * (fcPsi / fytPsi);
-  const termB = 0.09 * (fcPsi / fytPsi);
+  const fcCode = U.str(w.concrete.fc);
+  const fytCode = U.str(w.grade.fy);
+  const fyt = input(
+    `${NS}.fyt`,
+    "f_yt",
+    "yield strength of the transverse reinforcement",
+    fytCode,
+    U.stress,
+  );
+  const termA = 0.3 * (AgBeValue / AchValue - 1) * (fcCode / fytCode);
+  const termB = 0.09 * (fcCode / fytCode);
   const ratioReqValue = Math.max(termA, termB);
   const ratioReq = derive({
     id: `${NS}.Ash_ratio_req`,
@@ -1109,22 +1254,25 @@ function ashCheck(
     formula:
       "\\dfrac{A_{sh}}{s\\,b_c} \\ge \\max\\left[0.3\\left(\\dfrac{A_g}{A_{ch}} - 1\\right)\\dfrac{f'_c}{f_{yt}},\\ 0.09\\dfrac{f'_c}{f_{yt}}\\right]",
     substitution:
-      `\\max\\left[0.3\\left(\\dfrac{${fmtTex(AgBeValue)}}{${fmtTex(AchValue)}} - 1\\right)\\dfrac{${fmtTex(fcPsi)}}{${fmtTex(fytPsi)}},\\ ` +
-      `0.09 \\times \\dfrac{${fmtTex(fcPsi)}}{${fmtTex(fytPsi)}}\\right] = \\max(${fmtTex(termA, { dp: 5 })},\\ ${fmtTex(termB, { dp: 5 })}) = ${fmtTex(ratioReqValue, { dp: 5 })}`,
+      `\\max\\left[0.3\\left(\\dfrac{${fmtTex(AgBeValue)}}{${fmtTex(AchValue)}} - 1\\right)\\dfrac{${fmtTex(fcCode)}}{${fmtTex(fytCode)}},\\ ` +
+      `0.09 \\times \\dfrac{${fmtTex(fcCode)}}{${fmtTex(fytCode)}}\\right] = \\max(${fmtTex(termA, { dp: 5 })},\\ ${fmtTex(termB, { dp: 5 })}) = ${fmtTex(ratioReqValue, { dp: 5 })}`,
     ref: aci("18.10.6.4", "Table 18.10.6.4(g)"),
     inputs: [AgBe, Ach, fyt],
     note: termA >= termB ? "the A_g/A_ch term governs" : "the 0.09f'c/f_yt floor governs",
   });
 
-  const Ab = BARS[sbe.tieBar].Ab;
+  const Ab = U.ar(BARS[sbe.tieBar].Ab);
   const AbNode = input(
     `${NS}.Ab_tie`,
     "A_b,tie",
     `area of one tie leg (No. ${sbe.tieBar})`,
     Ab,
-    "in2",
+    U.area,
   );
-  const legsReqValue = (ratioReqValue * sbe.tieSpacing * bc1Value) / Ab;
+  // A_sh = n·A_b over s·b_c — a dimensionless ratio, so the leg count is the
+  // same number in either system once the leaves agree.
+  const sValue = U.len(sbe.tieSpacing);
+  const legsReqValue = (ratioReqValue * sValue * bc1Value) / Ab;
   const legsReq = derive({
     id: `${NS}.legs_req`,
     symbol: "n_legs,req",
@@ -1132,7 +1280,7 @@ function ashCheck(
     value: legsReqValue,
     unit: "1",
     formula: "n_{legs} \\ge \\dfrac{(A_{sh}/s b_c)_{req}\\,s\\,b_{c1}}{A_{b,tie}}",
-    substitution: `\\dfrac{${fmtTex(ratioReqValue, { dp: 5 })} \\times ${fmtTex(sbe.tieSpacing, { dp: 1 })} \\times ${fmtTex(bc1Value, { dp: 1 })}}{${fmtTex(Ab, { dp: 2 })}} = ${fmtTex(legsReqValue, { dp: 2 })}`,
+    substitution: `\\dfrac{${fmtTex(ratioReqValue, { dp: 5 })} \\times ${fmtTex(sValue, { dp: 1 })} \\times ${fmtTex(bc1Value, { dp: 1 })}}{${fmtTex(Ab, { dp: 2 })}} = ${fmtTex(legsReqValue, { dp: 2 })}`,
     ref: aci("18.10.6.4", "Table 18.10.6.4(g)"),
     inputs: [ratioReq, sProv, bc1, AbNode],
     note: "legs are counted perpendicular to b_c1, the core dimension across the SBE width — the direction MNL-17(21) Ex. 2 sizes; the orthogonal direction is not modelled by this input",
@@ -1152,76 +1300,93 @@ function ashCheck(
     legsReq,
     legsProv,
     "18.10.6.4",
-    `A_sh provided = ${fmtTex(sbe.tieLegsAcrossWidth)} × ${fmtTex(Ab, { dp: 2 })} = ${fmtTex(sbe.tieLegsAcrossWidth * Ab, { dp: 2 })} in²; the required leg count is rounded up in practice`,
+    `A_sh provided = ${fmtTex(sbe.tieLegsAcrossWidth)} × ${fmtTex(Ab, { dp: 2 })} = ${fmtTex(sbe.tieLegsAcrossWidth * Ab, { dp: 2 })} ${U.si ? "mm²" : "in²"}; the required leg count is rounded up in practice`,
   );
 }
 
 /**
  * 18.10.6.5(b) — where a special boundary element is **not** required, boundary
- * longitudinal reinforcement with ρ > 400/f_y (psi) must be laterally supported,
- * with vertical spacing per Table 18.10.6.5(b).
+ * longitudinal reinforcement with ρ > 400/f_y (psi) — 2.8/f_y in ACI 318M-19
+ * 18.10.6.5(b), f_y in MPa — must be laterally supported, with vertical spacing
+ * per Table 18.10.6.5(b).
  *
- * Only the Grade 60 rows are implemented (the engine's `GRADE80` is accepted but
- * the table's 80/100 ksi rows are flagged rather than silently mis-applied).
+ * Only the Grade 60 rows are implemented (Grade 420 in the metric table); the
+ * engine's `GRADE80`/`GRADE550` are accepted but the table's higher-grade rows
+ * are flagged rather than silently mis-applied.
  */
 function notRequired(w: WallInput, demand: Demands, req: SbeRequirement): CheckResult {
+  const U = schemeOf(w);
+  const lenWord = lenWordOf(U);
   const lw = lwInput(w);
   const h = hInput(w);
 
   // Boundary region per 18.10.6.4(a), i.e. the same length the ties would cover.
-  const lengthValue = Math.max(req.c - 0.1 * w.geometry.lw, req.c / 2);
+  // `req.c` is already in the reporting length unit (in | mm).
+  const cLocal = req.c;
+  const lengthValue = Math.max(cLocal - 0.1 * lw.value, cLocal / 2);
   const region = derive({
     id: `${NS}.alt.region`,
     symbol: "ℓ_be",
     label: "boundary region over which 18.10.6.5(b) applies",
     value: lengthValue,
-    unit: "in",
+    unit: U.length,
     formula: "\\max\\left(c - 0.1\\ell_w,\\ c/2\\right)",
-    substitution: `\\max(${fmtTex(req.c - 0.1 * w.geometry.lw, { dp: 2 })},\\ ${fmtTex(req.c / 2, { dp: 2 })}) = ${fmtTex(lengthValue, { dp: 2 })}\\ \\text{in.}`,
+    substitution: `\\max(${fmtTex(cLocal - 0.1 * lw.value, { dp: 2 })},\\ ${fmtTex(cLocal / 2, { dp: 2 })}) = ${fmtTex(lengthValue, { dp: 2 })}\\ ${lenTexOf(U)}`,
     ref: aci("18.10.6.4", "18.10.6.4a"),
     inputs: [req.cNode, lw],
   });
 
-  const stations = barPositions(w).filter((st) => st.x < lengthValue - 1e-6);
-  const AsValue = stations.reduce((sum, st) => sum + st.area, 0);
+  // `barPositions` is canonical geometry (inches), so the station filter uses
+  // the canonical region length; only the traced values are converted.
+  // U.len(1) is the scale of the reporting unit (1 in-lb, 25.4 in SI).
+  const regionIn = lengthValue / U.len(1);
+  const stations = barPositions(w).filter((st) => st.x < regionIn - 1e-6);
+  const AsValue = U.ar(stations.reduce((sum, st) => sum + st.area, 0));
   const As = input(
     `${NS}.alt.As`,
     "A_s,be",
     "boundary longitudinal steel",
     AsValue,
-    "in2",
-    `${stations.length} bar station(s) within ${fmtTex(lengthValue, { dp: 2 })} in. of the wall end`,
+    U.area,
+    `${stations.length} bar station(s) within ${fmtTex(lengthValue, { dp: 2 })} ${lenWord} of the wall end`,
   );
+  // ρ_be is a ratio and identical in both editions; it is assembled from the
+  // converted leaves so the substitution reads consistently.
+  const rhoValue = AsValue / (lengthValue * h.value);
   const rho = derive({
     id: `${NS}.alt.rho`,
     symbol: "ρ_be",
     label: "boundary longitudinal reinforcement ratio",
-    value: AsValue / (lengthValue * w.geometry.h),
+    value: rhoValue,
     unit: "1",
     formula: "\\rho_{be} = \\dfrac{A_{s,be}}{\\ell_{be}\\,h}",
-    substitution: `\\dfrac{${fmtTex(AsValue, { dp: 2 })}}{${fmtTex(lengthValue, { dp: 2 })} \\times ${fmtTex(w.geometry.h, { dp: 1 })}} = ${fmtTex(AsValue / (lengthValue * w.geometry.h), { dp: 5 })}`,
+    substitution: `\\dfrac{${fmtTex(AsValue, { dp: 2 })}}{${fmtTex(lengthValue, { dp: 2 })} \\times ${fmtTex(h.value, { dp: 1 })}} = ${fmtTex(rhoValue, { dp: 5 })}`,
     ref: aci("18.10.6.5", "18.10.6.5b"),
     inputs: [As, region, h],
   });
 
-  const fyPsi = ksiToPsi(w.grade.fy);
+  // 18.10.6.5(b) tie trigger ρ > 400/f_y (psi); ACI 318M-19 18.10.6.5(b) prints
+  // it as ρ > 2.8/f_y with f_y in MPa.
+  const fyCode = U.str(w.grade.fy);
+  const triggerNum = U.si ? 2.8 : 400;
+  const triggerNumTex = U.si ? "2.8" : "400";
   const coeff = constant(
     `${NS}.alt.coeff`,
-    "400",
-    "numerator of the 18.10.6.5(b) tie trigger (psi)",
-    400,
+    triggerNumTex,
+    `numerator of the 18.10.6.5(b) tie trigger (${U.si ? "MPa" : "psi"})`,
+    triggerNum,
     "1",
     aci("18.10.6.5", "18.10.6.5b"),
-    "SI form 2.8/f_y (MPa)",
+    U.si ? "in-lb form 400/f_y (psi)" : "SI form 2.8/f_y (MPa)",
   );
   const limit = derive({
     id: `${NS}.alt.rho_limit`,
-    symbol: "400/f_y",
+    symbol: `${triggerNumTex}/f_y`,
     label: "boundary tie trigger",
-    value: 400 / fyPsi,
+    value: triggerNum / fyCode,
     unit: "1",
-    formula: "\\rho_{be} > 400/f_y",
-    substitution: `400/${fmtTex(fyPsi)} = ${fmtTex(400 / fyPsi, { dp: 5 })}`,
+    formula: `\\rho_{be} > ${triggerNumTex}/f_y`,
+    substitution: `${triggerNumTex}/${fmtTex(fyCode)} = ${fmtTex(triggerNum / fyCode, { dp: 5 })}`,
     ref: aci("18.10.6.5", "18.10.6.5b"),
     inputs: [coeff],
   });
@@ -1233,7 +1398,7 @@ function notRequired(w: WallInput, demand: Demands, req: SbeRequirement): CheckR
     label: "boundary transverse reinforcement required",
     value: triggered,
     unit: "1",
-    formula: "\\rho_{be} > 400/f_y",
+    formula: `\\rho_{be} > ${triggerNumTex}/f_y`,
     substitution: `${fmtTex(rho.value, { dp: 5 })} ${triggered ? ">" : "\\le"} ${fmtTex(limit.value, { dp: 5 })} \\Rightarrow \\text{${triggered}}`,
     ref: aci("18.10.6.5", "18.10.6.5b"),
     inputs: [rho, limit],
@@ -1247,34 +1412,49 @@ function notRequired(w: WallInput, demand: Demands, req: SbeRequirement): CheckR
   let util: Traced | undefined;
 
   if (triggered) {
-    const grade60 = w.grade.fy <= 60 + TOL;
-    const db = BARS[w.vertical.bar].db;
+    // Table 18.10.6.5(b), lowest-grade row: within max(ℓ_w, M_u/4V_u) of the
+    // critical section s ≤ min(6d_b, 6 in.), elsewhere min(8d_b, 8 in.). The
+    // metric table (ACI 318M-19 Table 18.10.6.5(b)) keys the row off
+    // f_y = 420 MPa and soft-converts the absolute limits to 150 mm and 200 mm.
+    const gradeCapCode = U.si ? 420 : 60000;
+    const gradeLabel = U.si ? "Grade 420" : "Grade 60";
+    const higherGrades = U.si ? "Grade 550/690" : "Grade 80/100";
+    // The row split is on f_y itself, so it is compared in the edition's own
+    // stress unit — 60,000 psi in-lb, 420 MPa in ACI 318M-19.
+    const lowGrade = U.str(w.grade.fy) <= gradeCapCode * (1 + 1e-9);
+    const db = U.len(BARS[w.vertical.bar].db);
     const dbNode = input(
       `${NS}.alt.db`,
       "d_b",
       `smallest primary flexural bar diameter (No. ${w.vertical.bar})`,
       db,
-      "in",
+      U.length,
     );
+    const criticalMu = U.si
+      ? kipFtToKnM(Math.abs(demand.Mu)) * 1000
+      : kipFtToKipIn(Math.abs(demand.Mu));
     const critical = Math.max(
-      w.geometry.lw,
-      Math.abs(demand.Vu) > 0 ? kipFtToKipIn(Math.abs(demand.Mu)) / (4 * Math.abs(demand.Vu)) : 0,
+      lw.value,
+      Math.abs(demand.Vu) > 0 ? criticalMu / (4 * U.frc(Math.abs(demand.Vu))) : 0,
     );
-    const sReqValue = Math.min(6 * db, 6);
+    const sNear = U.si ? 150 : 6;
+    const sFar = U.si ? 200 : 8;
+    const sNearTex = `${fmtTex(sNear)}\\ ${lenTexOf(U)}`;
+    const sReqValue = Math.min(6 * db, sNear);
     const sReq = derive({
       id: `${NS}.alt.s_req`,
       symbol: "s_max",
       label: "maximum vertical spacing of boundary transverse reinforcement",
       value: sReqValue,
-      unit: "in",
-      formula: "s \\le \\min(6d_b,\\ 6\\ \\text{in.})",
-      substitution: `\\min(6 \\times ${fmtTex(db, { dp: 3 })},\\ 6) = ${fmtTex(sReqValue, { dp: 2 })}\\ \\text{in.}`,
+      unit: U.length,
+      formula: `s \\le \\min(6d_b,\\ ${sNearTex})`,
+      substitution: `\\min(6 \\times ${fmtTex(db, { dp: 3 })},\\ ${fmtTex(sNear)}) = ${fmtTex(sReqValue, { dp: 2 })}\\ ${lenTexOf(U)}`,
       ref: aci("18.10.6.5", "Table 18.10.6.5(b)"),
       inputs: [dbNode],
-      note: grade60
-        ? `Grade 60 row, within max(ℓ_w, M_u/4V_u) = ${fmtTex(critical, { dp: 1 })} in. of the critical section; elsewhere min(8d_b, 8 in.) = ${fmtTex(Math.min(8 * db, 8), { dp: 2 })} in.`
-        : "Table 18.10.6.5(b) rows for Grade 80/100 are not implemented — the Grade 60 row is shown and must be reviewed",
-      ...(grade60 ? {} : { status: "warning" as const }),
+      note: lowGrade
+        ? `${gradeLabel} row, within max(ℓ_w, M_u/4V_u) = ${fmtTex(critical, { dp: 1 })} ${lenWord} of the critical section; elsewhere min(8d_b, ${fmtTex(sFar)} ${lenWord}) = ${fmtTex(Math.min(8 * db, sFar), { dp: 2 })} ${lenWord}`
+        : `Table 18.10.6.5(b) rows for ${higherGrades} are not implemented — the ${gradeLabel} row is shown and must be reviewed`,
+      ...(lowGrade ? {} : { status: "warning" as const }),
     });
     nodes.push(sReq);
 
@@ -1283,8 +1463,8 @@ function notRequired(w: WallInput, demand: Demands, req: SbeRequirement): CheckR
         `${NS}.alt.s_prov`,
         "s",
         "provided boundary tie spacing",
-        w.sbe.tieSpacing,
-        "in",
+        U.len(w.sbe.tieSpacing),
+        U.length,
       );
       const sub = ratioNode(
         "alt_s",

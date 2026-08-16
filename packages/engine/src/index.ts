@@ -1,15 +1,34 @@
-export type { Unit, FmtOptions } from "./units";
+export type { Unit, FmtOptions, UnitScheme, UnitSystem } from "./units";
 export {
   convert,
+  DEFAULT_UNIT_SYSTEM,
   fmt,
   fmtTex,
   ftToIn,
+  ftToM,
+  in2ToMm2,
+  in3ToMm3,
+  in4ToMm4,
   inToFt,
+  inToMm,
   kipFtToKipIn,
+  kipFtToKnM,
   kipInToKipFt,
+  kipToKn,
+  knMToKipFt,
+  knToKip,
+  ksiToMPa,
   ksiToPsi,
+  mm2ToIn2,
+  mm3ToIn3,
+  mm4ToIn4,
+  mmToIn,
+  mPaToKsi,
+  mToFt,
   psiToKsi,
+  sqrtFcMPa,
   sqrtFcPsi,
+  unitScheme,
 } from "./units";
 
 export type {
@@ -27,6 +46,7 @@ export {
   derive,
   flattenTrace,
   input,
+  stampEdition,
   traceToMarkdown,
   validateTrace,
 } from "./trace";
@@ -37,10 +57,13 @@ export {
   bar,
   beta1,
   concrete,
+  concreteMPa,
   Ec,
   fcInput,
   GRADE60,
   GRADE80,
+  GRADE420,
+  GRADE550,
   lambdaInput,
 } from "./materials";
 
@@ -118,5 +141,7 @@ export {
   hwcsValue,
   hwOverLw,
   lwInput,
+  schemeOf,
   totalVerticalAs,
+  unitsOf,
 } from "./wall";

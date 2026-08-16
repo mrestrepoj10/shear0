@@ -7,9 +7,17 @@
  * trace report (T2c) will expand.
  */
 
-import type { CheckResult, CheckStatus, Demands, WallReport, Traced } from "@shear0/engine";
+import type {
+  CheckResult,
+  CheckStatus,
+  Demands,
+  WallInput,
+  WallReport,
+  Traced,
+} from "@shear0/engine";
 import { fmt } from "@shear0/engine";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { viewOf, type UnitsView } from "@/lib/units-view";
 import { RefBadge, StatusBadge, UtilizationBar, statusText } from "@/components/design/status";
 import { cn } from "@/lib/utils";
 
@@ -284,16 +292,21 @@ function CheckList({
   );
 }
 
-function demandSummary(demand: Demands): string {
+/**
+ * Demands are stored canonical whatever edition the wall is checked in — the
+ * traced nodes below carry their own units, this one line does not.
+ */
+export function demandSummary(demand: Demands, U: UnitsView): string {
   const parts = [
-    `Pu ${fmt(demand.Pu)} kip`,
-    `Mu ${fmt(demand.Mu)} kip-ft`,
-    `Vu ${fmt(demand.Vu)} kip`,
+    `Pu ${fmt(U.force(demand.Pu))} ${U.forceUnit}`,
+    `Mu ${fmt(U.moment(demand.Mu))} ${U.momentUnit}`,
+    `Vu ${fmt(U.force(demand.Vu))} ${U.forceUnit}`,
   ];
   return parts.join(" · ");
 }
 
-export function ResultsSummary({ report }: { report: WallReport }) {
+export function ResultsSummary({ input, report }: { input: WallInput; report: WallReport }) {
+  const U = viewOf(input);
   return (
     <div className="flex flex-col gap-3">
       <CheckList title="wall" checks={report.general} heading="h2" />
@@ -301,7 +314,7 @@ export function ResultsSummary({ report }: { report: WallReport }) {
         <CheckList
           key={group.demand.id}
           title={group.demand.label ?? group.demand.id}
-          subtitle={demandSummary(group.demand)}
+          subtitle={demandSummary(group.demand, U)}
           checks={group.checks}
           heading="h3"
         />

@@ -24,9 +24,7 @@ import {
   amplifiedShear,
   driftCapacityRatio,
   fmt,
-  ksiToPsi,
   sbeRequirement,
-  sqrtFcPsi,
   type Demands,
   type WallInput,
 } from "@shear0/engine";
@@ -41,15 +39,23 @@ import {
 } from "@/components/charts/xy-chart";
 import { num, statusText } from "@/components/design/status";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { viewOf, type UnitsView } from "@/lib/units-view";
 import { cn } from "@/lib/utils";
 
 const SWEEP_POINTS = 160;
 /** 18.10.6.2(b)(iii): δc/hwcs need not be taken below this. */
 const DRIFT_CAPACITY_FLOOR = 0.015;
 
-const X_AXIS = {
-  label: "b  (in)  — boundary element width",
-  format: (value: number) => fmt(value, { dp: 0 }),
+/** Frozen per system for the same reason the P–M chart's axes are. */
+const X_AXES = {
+  "in-lb": {
+    label: "b  (in)  — boundary element width",
+    format: (value: number) => fmt(value, { dp: 0 }),
+  },
+  si: {
+    label: "b  (mm)  — boundary element width",
+    format: (value: number) => fmt(value, { dp: 0 }),
+  },
 } as const;
 
 const Y_AXIS = {
@@ -64,6 +70,7 @@ interface DriftMeta {
 
 interface DriftView {
   path: "displacement";
+  U: UnitsView;
   label: string;
   c: number;
   Ve: number;
@@ -81,6 +88,7 @@ interface DriftView {
 
 interface StressView {
   path: "stress";
+  U: UnitsView;
   label: string;
   sigma: number;
   limit: number;
@@ -102,7 +110,17 @@ function governingDemand(input: WallInput): { demand: Demands; Ve: number } | nu
   return best;
 }
 
+/**
+ * Everything below the engine boundary comes back in the wall's *reporting*
+ * system already — `sbeRequirement().c` in mm, `amplifiedShear().Ve` in kN,
+ * `Acv` in mm² — while `input.geometry` and `input.sbe` are canonical inches.
+ * Eq. (18.10.6.2b) is only dimensionless if every argument agrees, so the
+ * geometry is moved into the reporting system on the way in and `si` selects
+ * the metric form of the shear term. The width the panel sweeps and marks is
+ * therefore a *display* width throughout.
+ */
 function build(input: WallInput): DriftView | StressView | null {
+  const U = viewOf(input);
   const governing = governingDemand(input);
   if (governing === null) return null;
 
@@ -115,32 +133,41 @@ function build(input: WallInput): DriftView | StressView | null {
   const label = governing.demand.label ?? governing.demand.id;
 
   if (req.method === "stress") {
-    const fcPsi = ksiToPsi(input.concrete.fc);
+    // 0.2f'c and 0.15f'c are dimensionless coefficients on f'c, so the limits
+    // are read in whichever stress unit the edition prints — psi or MPa.
+    const fc = U.stress(input.concrete.fc);
     return {
       path: "stress",
+      U,
       label,
       sigma: req.sigma?.value ?? Number.NaN,
-      limit: 0.2 * fcPsi,
-      discontinue: 0.15 * fcPsi,
+      limit: 0.2 * fc,
+      discontinue: 0.15 * fc,
       required: req.required,
     };
   }
 
   const demand15 = req.driftDemand15?.value ?? 0;
+  const lw = U.len(input.geometry.lw);
+  const h = U.len(input.geometry.h);
   const args = {
-    lw: input.geometry.lw,
+    lw,
     c: req.c,
     Ve: governing.Ve,
-    sqrtFc: sqrtFcPsi(input.concrete.fc),
+    sqrtFc: U.scheme.sqrtFc(input.concrete.fc),
     Acv: Acv(input).value,
+    si: U.si,
   };
   const rawAt = (b: number) => driftCapacityRatio({ ...args, b });
   const capacityAt = (b: number) => Math.max(rawAt(b), DRIFT_CAPACITY_FLOOR);
 
-  const bProvided = input.sbe?.width;
-  const sqrtReq = Math.sqrt(0.025 * req.c * input.geometry.lw);
-  const bMin = Math.max(4, Math.min(input.geometry.h, bProvided ?? input.geometry.h));
-  const bMax = Math.max(bProvided ?? 0, sqrtReq, input.geometry.h, bMin + 4) * 1.5;
+  const bProvided = input.sbe === undefined ? undefined : U.len(input.sbe.width);
+  const sqrtReq = Math.sqrt(0.025 * req.c * lw);
+  // The 4 in. pad on each end of the sweep is a plotting margin, not a code
+  // minimum — it stays 4 in. of wall in either edition.
+  const pad = U.len(4);
+  const bMin = Math.max(pad, Math.min(h, bProvided ?? h));
+  const bMax = Math.max(bProvided ?? 0, sqrtReq, h, bMin + pad) * 1.5;
 
   let bRequired: number | null = null;
   for (let i = 0; i <= SWEEP_POINTS; i++) {
@@ -153,6 +180,7 @@ function build(input: WallInput): DriftView | StressView | null {
 
   return {
     path: "displacement",
+    U,
     label,
     c: req.c,
     Ve: governing.Ve,
@@ -221,7 +249,7 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
       const y = view.capacityAt(view.bProvided);
       markers.push({
         id: "provided",
-        label: `b provided = ${fmt(view.bProvided, { dp: 1 })} in`,
+        label: `b provided = ${fmt(view.bProvided, { dp: 1 })} ${view.U.lengthUnit}`,
         x: view.bProvided,
         y,
         token: (y >= view.demand15 ? "ok" : "ng") satisfies ChartToken,
@@ -234,13 +262,15 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
 
   if (view === null) return null;
 
+  const code = view.U.si ? "ACI 318M-19" : "ACI 318-19";
+
   if (view.path === "stress") {
     return (
-      <Panel subtitle="ACI 318-19 §18.10.6.3 — stress-based path">
+      <Panel subtitle={`${code} §18.10.6.3 — stress-based path`}>
         <p className="sr-only">
           Stress-based boundary element check for load case {view.label}: the extreme-fiber
-          compressive stress is {num(view.sigma)} psi against a limit of {num(view.limit)} psi
-          (0.2f&apos;c), so special boundary elements are{" "}
+          compressive stress is {num(view.sigma)} {view.U.stressUnit} against a limit of{" "}
+          {num(view.limit)} {view.U.stressUnit} (0.2f&apos;c), so special boundary elements are{" "}
           {view.required ? "required" : "not required"}.
         </p>
         <p className="font-mono text-xs2 leading-5 text-muted-foreground">
@@ -248,9 +278,12 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
           (18.10.6.2b) does not apply — there is no width to trade against drift.
         </p>
         <div className="flex flex-col gap-1 font-mono text-xs2">
-          <Readout label="σ" value={`${num(view.sigma)} psi`} scope={view.label} />
-          <Readout label="0.2f'c" value={`${num(view.limit)} psi`} />
-          <Readout label="0.15f'c — may discontinue below" value={`${num(view.discontinue)} psi`} />
+          <Readout label="σ" value={`${num(view.sigma)} ${view.U.stressUnit}`} scope={view.label} />
+          <Readout label="0.2f'c" value={`${num(view.limit)} ${view.U.stressUnit}`} />
+          <Readout
+            label="0.15f'c — may discontinue below"
+            value={`${num(view.discontinue)} ${view.U.stressUnit}`}
+          />
         </div>
         {/* Neither branch is a failure: §18.10.6.3 either sends the wall to
             special boundary elements or to 18.10.6.5, and both are valid
@@ -267,10 +300,12 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
   const provided = view.bProvided;
   const capacity = provided === undefined ? undefined : view.capacityAt(provided);
   const passes = capacity !== undefined && capacity >= view.demand15;
+  /** spelled out for the screen-reader summary, abbreviated in the readouts */
+  const units = view.U.si ? "millimetres" : "inches";
 
   return (
     <Panel
-      subtitle="ACI 318-19 §18.10.6.2(b) — width against drift"
+      subtitle={`${code} §18.10.6.2(b) — width against drift`}
       actions={<ChartExportButtons containerRef={plotRef} filename="drift-capacity" />}
     >
       {/* The chart is one picture behind `role="img"`; these are the two
@@ -279,14 +314,14 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
         Drift capacity swept over the boundary element width for load case {view.label}.{" "}
         {capacity === undefined
           ? "No boundary element is provided, so there is no capacity to compare."
-          : `At the provided width of ${num(provided, 1)} inches the capacity ratio δc/hwcs is ${capacity.toFixed(5)}${
+          : `At the provided width of ${num(provided, 1)} ${units} the capacity ratio δc/hwcs is ${capacity.toFixed(5)}${
               view.floored ? " (the 0.015 floor)" : ""
             }, against a required 1.5δu/hwcs of ${view.demand15.toFixed(5)} — ${
               passes ? "the provided width passes" : "the provided width fails"
             }.`}{" "}
         {view.bRequired === null
-          ? `No swept width up to ${num(view.bMax, 1)} inches satisfies option (iii).`
-          : `Option (iii) is satisfied from ${num(view.bRequired, 1)} inches of width.`}
+          ? `No swept width up to ${num(view.bMax, 1)} ${units} satisfies option (iii).`
+          : `Option (iii) is satisfied from ${num(view.bRequired, 1)} ${units} of width.`}
       </p>
 
       {chart === null ? null : (
@@ -297,7 +332,7 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
           series={chart.series}
           markers={chart.markers}
           height={260}
-          x={X_AXIS}
+          x={X_AXES[view.U.system]}
           y={Y_AXIS}
           onFocusChange={setFocus}
         />
@@ -307,13 +342,14 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
       <p aria-live="polite" className="min-h-8 font-mono text-xs2 leading-4 text-muted-foreground">
         {focus === null ? (
           <>
-            c = {num(view.c, 2)} in · V<sub>e</sub> = {num(view.Ve)} kip · {view.label}
+            c = {num(view.c, 2)} {view.U.lengthUnit} · V<sub>e</sub> = {num(view.Ve)}{" "}
+            {view.U.forceUnit} · {view.label}
             <br />
             hover the curve to read a width, or take the crossing
           </>
         ) : (
           <>
-            b = {num(focus.x, 1)} in · {focus.label} = {focus.y.toFixed(5)}
+            b = {num(focus.x, 1)} {view.U.lengthUnit} · {focus.label} = {focus.y.toFixed(5)}
             <br />
             {focus.meta?.kind === "computed"
               ? "the raw equation — the code lets you take 0.015 whatever it says"
@@ -337,11 +373,14 @@ export const DriftPanel = memo(function DriftPanel({ input }: { input: WallInput
           label="b to satisfy option (iii)"
           value={
             view.bRequired === null
-              ? `> ${num(view.bMax, 1)} in — no swept width works`
-              : `${num(view.bRequired, 1)} in`
+              ? `> ${num(view.bMax, 1)} ${view.U.lengthUnit} — no swept width works`
+              : `${num(view.bRequired, 1)} ${view.U.lengthUnit}`
           }
         />
-        <Readout label="option (ii) √(0.025cℓw)" value={`${num(view.sqrtReq, 1)} in`} />
+        <Readout
+          label="option (ii) √(0.025cℓw)"
+          value={`${num(view.sqrtReq, 1)} ${view.U.lengthUnit}`}
+        />
       </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-2xs text-muted-foreground">

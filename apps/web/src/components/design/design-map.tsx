@@ -40,6 +40,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { num } from "@/components/design/status";
 import { hasNoLoads, normalizedStatus } from "@/components/design/results-summary";
 import { BAR_SIZES } from "@/lib/presets";
+import { viewOf } from "@/lib/units-view";
 import { useWallDispatch } from "@/lib/wall-state";
 import { cn } from "@/lib/utils";
 import type { CheckStatus } from "@shear0/engine";
@@ -118,6 +119,10 @@ export const DesignMap = memo(function DesignMap({
 }) {
   const dispatch = useWallDispatch();
   const [hover, setHover] = useState<Cell | null>(null);
+  // The ladder itself stays canonical — the same physical spacings are worth
+  // trying in either edition — so only the numbers on the headers and the
+  // readout move into the wall's system.
+  const U = viewOf(input);
 
   const { bars, spacings, cells, unloaded } = useMemo(() => {
     const run = input.system === "special" ? checkSpecialWall : checkOrdinaryWall;
@@ -200,7 +205,7 @@ export const DesignMap = memo(function DesignMap({
                 role="columnheader"
                 className="text-center font-mono text-2xs tabular-nums text-muted-foreground"
               >
-                {s}
+                {U.len(s)}
               </span>
             ))}
           </div>
@@ -244,7 +249,7 @@ export const DesignMap = memo(function DesignMap({
                       key={cell.spacing}
                       type="button"
                       role="gridcell"
-                      aria-label={`#${cell.bar} at ${cell.spacing} inches — ${spoken}${isCurrent ? " (current design)" : ""}`}
+                      aria-label={`#${cell.bar} at ${U.len(cell.spacing)} ${U.si ? "millimetres" : "inches"} — ${spoken}${isCurrent ? " (current design)" : ""}`}
                       data-status={cell.status}
                       className={cn(
                         "h-5 rounded-[3px] transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none",
@@ -289,7 +294,7 @@ export const DesignMap = memo(function DesignMap({
             )
           ) : (
             <>
-              #{hover.bar} @ {fmt(hover.spacing)} in —{" "}
+              #{hover.bar} @ {fmt(U.len(hover.spacing))} {U.lengthUnit} —{" "}
               {hover.status === "ng" ? (
                 <span className="text-status-ng">fails</span>
               ) : hover.status === "na" ? (

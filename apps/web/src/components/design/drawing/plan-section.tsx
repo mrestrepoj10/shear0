@@ -31,9 +31,10 @@ import {
 } from "@shear0/engine";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSetSelection } from "@/lib/wall-state";
+import { viewOf, type UnitsView } from "@/lib/units-view";
 import { DimLine } from "./dim-line";
 import { Drawing, HAIRLINE, Note, fitScale, paddedViewBox } from "./drawing";
-import { dim } from "./format";
+import { areaDim, dim, lenDim } from "./format";
 
 const CANVAS_W = 1000;
 const MAX_WALL_H = 150;
@@ -207,6 +208,9 @@ export function WallPlanSection({ input }: { input: WallInput }) {
 
   const { geometry, vertical, horizontal, endZone } = input;
   const { lw, h, cover } = geometry;
+  // Only the labels convert: every coordinate below stays in canonical inches,
+  // and the drawing scale is arbitrary anyway.
+  const U = viewOf(input);
   const stations = resolveStations(input);
 
   // Shrinking the station count (a coarser spacing, a dropped end zone) must
@@ -314,19 +318,26 @@ export function WallPlanSection({ input }: { input: WallInput }) {
       viewBox={paddedViewBox({ width: W, height: HT }, PAD)}
       fontSize={FONT}
       role="group"
-      title={`plan section — wall ${dim(lw)} in long by ${dim(h)} in thick, ${stations.length} vertical bar stations${
-        sbe === undefined ? "" : `, boundary elements ${dim(sbe.width)} × ${dim(sbe.length)} in`
+      title={`plan section — wall ${lenDim(U, lw)} ${U.lengthUnit} long by ${lenDim(U, h)} ${U.lengthUnit} thick, ${stations.length} vertical bar stations${
+        sbe === undefined
+          ? ""
+          : `, boundary elements ${lenDim(U, sbe.width)} × ${lenDim(U, sbe.length)} ${U.lengthUnit}`
       }`}
       desc={`Horizontal cut through the wall. ${vertical.curtains} curtain${
         vertical.curtains === 1 ? "" : "s"
-      } of #${vertical.bar} vertical bars at ${dim(vertical.spacing)} in, cover ${dim(cover)} in.${
+      } of #${vertical.bar} vertical bars at ${lenDim(U, vertical.spacing)} ${U.lengthUnit}, cover ${lenDim(
+        U,
+        cover,
+      )} ${U.lengthUnit}.${
         sbe === undefined
           ? ""
-          : ` Special boundary element at each end: ${dim(sbe.width)} in wide by ${dim(
+          : ` Special boundary element at each end: ${lenDim(U, sbe.width)} ${U.lengthUnit} wide by ${lenDim(
+              U,
               sbe.length,
-            )} in long with ${sbe.longCount} #${sbe.longBar} longitudinal bars and #${sbe.tieBar} hoops at ${dim(
+            )} ${U.lengthUnit} long with ${sbe.longCount} #${sbe.longBar} longitudinal bars and #${sbe.tieBar} hoops at ${lenDim(
+              U,
               sbe.tieSpacing,
-            )} in.`
+            )} ${U.lengthUnit}.`
       }`}
     >
       {/* end-zone strips */}
@@ -528,22 +539,22 @@ export function WallPlanSection({ input }: { input: WallInput }) {
       </g>
 
       {/* dimensions */}
-      <DimLine x1={0} y1={HT} x2={W} y2={HT} offset={54} label={dim(lw)} />
+      <DimLine x1={0} y1={HT} x2={W} y2={HT} offset={54} label={lenDim(U, lw)} />
       {sbe === undefined ? (
-        <DimLine x1={0} y1={webTop} x2={0} y2={webBot} offset={44} label={dim(h)} />
+        <DimLine x1={0} y1={webTop} x2={0} y2={webBot} offset={44} label={lenDim(U, h)} />
       ) : (
         <>
-          <DimLine x1={0} y1={0} x2={0} y2={HT} offset={44} label={dim(sbe.width)} />
+          <DimLine x1={0} y1={0} x2={0} y2={HT} offset={44} label={lenDim(U, sbe.width)} />
           <DimLine
             x1={X(sbeLen)}
             y1={webTop}
             x2={X(sbeLen)}
             y2={webBot}
             offset={-34}
-            label={dim(h)}
+            label={lenDim(U, h)}
             className="opacity-55"
           />
-          <DimLine x1={0} y1={HT} x2={X(sbeLen)} y2={HT} offset={24} label={dim(sbe.length)} />
+          <DimLine x1={0} y1={HT} x2={X(sbeLen)} y2={HT} offset={24} label={lenDim(U, sbe.length)} />
           {layout === null || layout.hxSpan === null ? null : (
             <DimLine
               x1={X(layout.hxSpan[0])}
@@ -551,7 +562,7 @@ export function WallPlanSection({ input }: { input: WallInput }) {
               x2={X(layout.hxSpan[1])}
               y2={X(layout.hoop.y0)}
               offset={-16}
-              label={`hx ${dim(sbe.hx)}`}
+              label={`hx ${lenDim(U, sbe.hx)}`}
               className="opacity-55"
             />
           )}
@@ -562,7 +573,7 @@ export function WallPlanSection({ input }: { input: WallInput }) {
       )}
 
       {stations[0] !== undefined ? (
-        <DimLine x1={0} y1={0} x2={X(stations[0].x)} y2={0} offset={-30} label={dim(stations[0].x)} />
+        <DimLine x1={0} y1={0} x2={X(stations[0].x)} y2={0} offset={-30} label={lenDim(U, stations[0].x)} />
       ) : null}
       {endZone !== undefined && stations[1] !== undefined && stations[0] !== undefined ? (
         <DimLine
@@ -571,7 +582,7 @@ export function WallPlanSection({ input }: { input: WallInput }) {
           x2={X(stations[1].x)}
           y2={0}
           offset={-30}
-          label={dim(stations[1].x - stations[0].x)}
+          label={lenDim(U, stations[1].x - stations[0].x)}
         />
       ) : null}
       {typicalFrom !== undefined && typicalTo !== undefined ? (
@@ -581,7 +592,7 @@ export function WallPlanSection({ input }: { input: WallInput }) {
           x2={X(typicalTo.x)}
           y2={0}
           offset={-30}
-          label={`${dim(typicalTo.x - typicalFrom.x)} typ`}
+          label={`${lenDim(U, typicalTo.x - typicalFrom.x)} typ`}
         />
       ) : null}
 
@@ -594,25 +605,25 @@ export function WallPlanSection({ input }: { input: WallInput }) {
             x2={W}
             y2={curtains[0]}
             offset={-46}
-            label={dim(curtainInset)}
+            label={lenDim(U, curtainInset)}
             className="opacity-55"
           />
           <Note x={W + 54} y={webBot / 2 + 16} size={9}>
-            cover {dim(cover)} + db/2
+            cover {lenDim(U, cover)} + db/2
           </Note>
         </>
       ) : null}
 
       <Note x={0} y={HT + 34} size={9}>
-        vert #{vertical.bar} @ {dim(vertical.spacing)} · {vertical.curtains} curtain
-        {vertical.curtains === 1 ? "" : "s"} · horiz #{horizontal.bar} @ {dim(horizontal.spacing)} ·
-        cover {dim(cover)}
+        vert #{vertical.bar} @ {lenDim(U, vertical.spacing)} · {vertical.curtains} curtain
+        {vertical.curtains === 1 ? "" : "s"} · horiz #{horizontal.bar} @{" "}
+        {lenDim(U, horizontal.spacing)} · cover {lenDim(U, cover)}
       </Note>
       {sbe === undefined ? null : (
         <Note x={0} y={HT + 52} size={9}>
-          SBE {dim(sbe.width)} × {dim(sbe.length)} · ({dim(sbe.longCount, 0)}) #{sbe.longBar} hollow
-          — detailing only, P–M uses the wall bar layout · #{sbe.tieBar} hoops @{" "}
-          {dim(sbe.tieSpacing)}, {dim(sbe.tieLegsAcrossWidth, 0)} legs ⊥ b
+          SBE {lenDim(U, sbe.width)} × {lenDim(U, sbe.length)} · ({dim(sbe.longCount, 0)}) #
+          {sbe.longBar} hollow — detailing only, P–M uses the wall bar layout · #{sbe.tieBar} hoops
+          @ {lenDim(U, sbe.tieSpacing)}, {dim(sbe.tieLegsAcrossWidth, 0)} legs ⊥ b
         </Note>
       )}
 
@@ -624,7 +635,7 @@ export function WallPlanSection({ input }: { input: WallInput }) {
           tab stop, arrows to walk them, Escape to let go. */}
       <g
         role="listbox"
-        aria-label={`vertical bar stations — ${count} across the ${dim(lw)} inch wall`}
+        aria-label={`vertical bar stations — ${count} across the ${lenDim(U, lw)} ${U.lengthUnit} wall`}
         aria-orientation="horizontal"
         onKeyDown={(event) => {
           if (event.key === "ArrowRight" || event.key === "ArrowDown") {
@@ -661,9 +672,11 @@ export function WallPlanSection({ input }: { input: WallInput }) {
               tabIndex={i === cursorAt ? 0 : -1}
               role="option"
               aria-selected={active === i}
-              aria-label={`bar station at ${dim(st.x)} inches, ${st.count} number ${st.bar} ${
+              aria-label={`bar station at ${lenDim(U, st.x)} ${U.lengthUnit}, ${st.count} number ${
+                st.bar
+              } ${
                 st.source === "endZone" ? "end-zone" : "distributed"
-              } bars, ${dim(st.area)} square inches`}
+              } bars, ${areaDim(U, st.area)} ${U.areaUnit}`}
               className="cursor-pointer focus:outline-none"
               onMouseEnter={() => setHovered(i)}
               onMouseLeave={() => setHovered((prev) => (prev === i ? null : prev))}
@@ -696,7 +709,7 @@ export function WallPlanSection({ input }: { input: WallInput }) {
         })}
 
         {active === null || stations[active] === undefined ? null : (
-          <StationReadout station={stations[active]} x={X(stations[active].x)} width={W} />
+          <StationReadout station={stations[active]} x={X(stations[active].x)} width={W} U={U} />
         )}
       </g>
     </Drawing>
@@ -707,15 +720,17 @@ function StationReadout({
   station,
   x,
   width,
+  U,
 }: {
   station: Station;
   x: number;
   width: number;
+  U: UnitsView;
 }) {
   const lines = [
-    `x = ${dim(station.x)} in`,
+    `x = ${lenDim(U, station.x)} ${U.lengthUnit}`,
     `${station.count} × #${station.bar} · ${station.source === "endZone" ? "end zone" : "distributed"}`,
-    `As = ${dim(station.area)} in²`,
+    `As = ${areaDim(U, station.area)} ${U.areaUnit}`,
   ];
   const size = 10;
   const lineH = size * 1.35;

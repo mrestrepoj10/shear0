@@ -8,7 +8,9 @@ import { EXAMPLE_1 } from "@/lib/presets";
 
 export const metadata: Metadata = {
   title: "calc sheet",
-  description: "Printable shear wall calculation report per ACI 318-19.",
+  // Static metadata, so it names both editions rather than the one this
+  // particular `?w=` selects — the sheet itself says which is in force.
+  description: "Printable shear wall calculation report per ACI 318-19 / 318M-19.",
 };
 
 /**

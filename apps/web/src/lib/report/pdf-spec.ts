@@ -18,7 +18,15 @@ import {
   type WallInput,
   type WallReport,
 } from "@shear0/engine";
-import { demandTitle, flattenCheck, inputRows, valueText, type ReportMeta } from "./build-spec";
+import { viewOf } from "@/lib/units-view";
+import {
+  demandTitle,
+  flattenCheck,
+  inputRows,
+  standardName,
+  valueText,
+  type ReportMeta,
+} from "./build-spec";
 
 /** LaTeX commands and Unicode math the engine uses, to WinAnsi-safe ASCII. */
 const LATEX: [RegExp, string][] = [
@@ -122,6 +130,8 @@ interface SpecElement {
 
 export function buildPdfSpec(input: WallInput, report: WallReport, meta: ReportMeta): Spec {
   const elements: Record<string, SpecElement> = {};
+  const U = viewOf(input);
+  const code = standardName(input);
   let n = 0;
   const add = (
     type: string,
@@ -134,7 +144,7 @@ export function buildPdfSpec(input: WallInput, report: WallReport, meta: ReportM
   };
 
   const checkBlock = (check: CheckResult): string[] => {
-    const refText = `ACI 318-19 Sec. ${check.ref.section}${check.ref.eq ? ` (Eq. ${check.ref.eq})` : ""}`;
+    const refText = `${code} Sec. ${check.ref.section}${check.ref.eq ? ` (Eq. ${check.ref.eq})` : ""}`;
     const rows: string[][] = flattenCheck(check).map(({ node, depth }) => [
       `${"  ".repeat(depth)}${asciiMath(node.symbol)}`,
       asciiMath(valueText(node)),
@@ -164,7 +174,7 @@ export function buildPdfSpec(input: WallInput, report: WallReport, meta: ReportM
   const children: string[] = [
     add("Heading", { text: "shear wall calc sheet", level: "h1" }),
     add("Text", {
-      text: `ACI 318-19 - overall result: ${STATUS_TEXT[report.status]}`,
+      text: `${code} - overall result: ${STATUS_TEXT[report.status]}`,
       fontSize: 11,
       color: STATUS_COLOR[report.status],
     }),
@@ -188,26 +198,34 @@ export function buildPdfSpec(input: WallInput, report: WallReport, meta: ReportM
   children.push(
     add("Heading", { text: "wall plan section", level: "h2" }),
     add("WallPlan", {
-      lw: input.geometry.lw,
-      h: input.geometry.h,
-      stations: barPositions(input).map((st) => st.x),
-      sbeLength: input.sbe?.length ?? null,
+      // The plan is drawn to relative scale, so the conversion only shows up in
+      // the dimension line under it — but the whole figure must be in one
+      // system, stations included.
+      lw: U.len(input.geometry.lw),
+      h: U.len(input.geometry.h),
+      stations: barPositions(input).map((st) => U.len(st.x)),
+      sbeLength: input.sbe === undefined ? null : U.len(input.sbe.length),
+      lengthUnit: U.lengthUnit,
     }),
-    add("Heading", { text: "P-M interaction (ACI 318-19 Sec. 22.2 / 22.4)", level: "h2" }),
+    add("Heading", { text: `P-M interaction (${code} Sec. 22.2 / 22.4)`, level: "h2" }),
     add("PmChart", {
       design: designCurve(input, { points: 120 }).map((p) => ({ x: p.phiMn, y: p.phiPn })),
       nominal: interactionCurve(input, { points: 120 }).map((p) => ({ x: p.Mn, y: p.Pn })),
+      // The curves are already in the wall's system; `Demands` is canonical
+      // storage in both editions, so the points have to be moved onto them.
       demands: input.demands.map((d) => {
         const check = report.perDemand
           .find((g) => g.demand.id === d.id)
           ?.checks.find((c) => c.id === "flexure.axial");
         return {
-          x: Math.abs(d.Mu),
-          y: d.Pu,
+          x: U.moment(Math.abs(d.Mu)),
+          y: U.force(d.Pu),
           label: d.label ?? d.id,
           ok: check?.status !== "ng",
         };
       }),
+      momentUnit: U.momentUnit,
+      forceUnit: U.forceUnit,
     }),
     add("Spacer", { height: 8 }),
   );
@@ -239,7 +257,7 @@ export function buildPdfSpec(input: WallInput, report: WallReport, meta: ReportM
     for (const check of report.general) children.push(...checkBlock(check));
   }
   for (const group of report.perDemand) {
-    children.push(add("Heading", { text: asciiMath(demandTitle(group.demand)), level: "h2" }));
+    children.push(add("Heading", { text: asciiMath(demandTitle(group.demand, U)), level: "h2" }));
     for (const check of group.checks) children.push(...checkBlock(check));
   }
   children.push(add("PageNumber", {}));
