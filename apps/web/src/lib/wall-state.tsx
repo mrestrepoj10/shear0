@@ -25,7 +25,7 @@ import {
   type SeismicParams,
   type WallInput,
   type WallReport,
-} from "@kern/engine";
+} from "@shear0/engine";
 import {
   createContext,
   useContext,

@@ -10,7 +10,7 @@
  * debounced: the engine still runs synchronously on every keystroke.
  */
 
-import type { WallInput } from "@kern/engine";
+import type { WallInput } from "@shear0/engine";
 import { useEffect, useRef } from "react";
 import { WALL_PARAM, decodeWallInput, encodeWallInput } from "./wall-codec";
 import type { WallAction } from "./wall-state";

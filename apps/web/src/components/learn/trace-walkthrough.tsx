@@ -21,7 +21,7 @@
  * node (φ, A_cv, f'_c) would be re-expanded down every path that reaches it.
  */
 
-import { fmt, type CheckResult, type Traced } from "@kern/engine";
+import { fmt, type CheckResult, type Traced } from "@shear0/engine";
 import { ChevronRight } from "lucide-react";
 import { Tex } from "@/components/design/tex";
 import { RefBadge, StatusBadge, statusText } from "@/components/design/status";

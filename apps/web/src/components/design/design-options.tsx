@@ -28,7 +28,7 @@ import {
   type CheckStatus,
   type WallInput,
   type WallReport,
-} from "@kern/engine";
+} from "@shear0/engine";
 import { memo, useMemo, useSyncExternalStore } from "react";
 import { XyChart, type XySeries } from "@/components/charts/xy-chart";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,7 @@ import { normalizedStatus } from "@/components/design/results-summary";
 import { decodeWallInput, encodeWallInput } from "@/lib/wall-codec";
 import { cn } from "@/lib/utils";
 
-const STORAGE_KEY = "kern.pinned-options.v1";
+const STORAGE_KEY = "shear0.pinned-options.v1";
 const MAX_OPTIONS = 3;
 const OPTION_LETTERS = ["A", "B", "C"] as const;
 const CURVE_POINTS = 80;

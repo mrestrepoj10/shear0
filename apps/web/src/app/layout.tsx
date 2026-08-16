@@ -27,7 +27,7 @@ const DESCRIPTION = "Shear wall design, per ACI 318-19.";
  * a repository fact, so it comes from the environment; the fallback is a
  * localhost origin so a local build produces absolute URLs that at least parse
  * instead of Next warning on every page. Set `NEXT_PUBLIC_SITE_URL` to the real
- * origin (e.g. https://kern.example.com) wherever this is deployed.
+ * origin (e.g. https://shear0.example.com) wherever this is deployed.
  */
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -35,15 +35,15 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   // `default` for the root, `template` for everything under it: the tab used to
   // read a bare "design" / "learn" with no idea what app they belonged to.
-  title: { default: "kern", template: "%s · kern" },
+  title: { default: "shear0", template: "%s · shear0" },
   description: DESCRIPTION,
-  applicationName: "kern",
+  applicationName: "shear0",
   // No `url` or `title` here: child routes inherit this whole object, so a
   // root-specific URL/title would make every shared /design or /learn link
   // preview as the homepage. Each falls back to the page's own resolved value.
   openGraph: {
     type: "website",
-    siteName: "kern",
+    siteName: "shear0",
     description: DESCRIPTION,
   },
 };
@@ -65,7 +65,7 @@ export const viewport: Viewport = {
 
 /**
  * The engineering disclaimer, on every page. Deliberately quiet — an engineer
- * should not have to dismiss it — but never absent: kern produces calculations
+ * should not have to dismiss it — but never absent: shear0 produces calculations
  * that a licensed engineer has to own.
  */
 function Footer() {

@@ -6,7 +6,7 @@
  * checks first, then a row per load case, governing check emphasized.
  */
 
-import { fmt, type CheckResult, type WallReport } from "@kern/engine";
+import { fmt, type CheckResult, type WallReport } from "@shear0/engine";
 import { checkTitle, governingCheck } from "@/components/design/results-summary";
 import { RefBadge, StatusBadge, UtilizationBar, statusText } from "@/components/design/status";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

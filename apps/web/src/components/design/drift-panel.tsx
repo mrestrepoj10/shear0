@@ -29,7 +29,7 @@ import {
   sqrtFcPsi,
   type Demands,
   type WallInput,
-} from "@kern/engine";
+} from "@shear0/engine";
 import { memo, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChartExportButtons } from "@/components/design/chart-export";
 import {

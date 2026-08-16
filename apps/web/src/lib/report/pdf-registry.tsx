@@ -14,7 +14,7 @@
 import { defineCatalog } from "@json-render/core";
 import { defineRegistry, schema } from "@json-render/react-pdf";
 import { Circle, Line, Path, Rect, Svg, Text as SvgText, Text as PdfText, View } from "@react-pdf/renderer";
-import { fmt } from "@kern/engine";
+import { fmt } from "@shear0/engine";
 import { z } from "zod";
 
 const POINT = z.object({ x: z.number(), y: z.number() });

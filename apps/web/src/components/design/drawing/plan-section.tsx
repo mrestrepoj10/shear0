@@ -28,7 +28,7 @@ import {
   type BarStation,
   type SbeProvided,
   type WallInput,
-} from "@kern/engine";
+} from "@shear0/engine";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSetSelection } from "@/lib/wall-state";
 import { DimLine } from "./dim-line";

@@ -17,7 +17,7 @@ import {
   type CheckStatus,
   type WallInput,
   type WallReport,
-} from "@kern/engine";
+} from "@shear0/engine";
 import { demandTitle, flattenCheck, inputRows, valueText, type ReportMeta } from "./build-spec";
 
 /** LaTeX commands and Unicode math the engine uses, to WinAnsi-safe ASCII. */
@@ -168,8 +168,8 @@ export function buildPdfSpec(input: WallInput, report: WallReport, meta: ReportM
       fontSize: 11,
       color: STATUS_COLOR[report.status],
     }),
-    add("Text", { text: `generated ${meta.generatedAt} by kern`, fontSize: 8, color: "#6b7280" }),
-    add("Link", { text: "open this design in kern", href: meta.link }),
+    add("Text", { text: `generated ${meta.generatedAt} by shear0`, fontSize: 8, color: "#6b7280" }),
+    add("Link", { text: "open this design in shear0", href: meta.link }),
     add("Divider", {}),
     add("Heading", { text: "design inputs", level: "h2" }),
     add("Table", {
@@ -245,6 +245,7 @@ export function buildPdfSpec(input: WallInput, report: WallReport, meta: ReportM
   children.push(add("PageNumber", {}));
 
   const page = add("Page", { size: "LETTER" }, children);
-  const doc = add("Document", { title: "kern shear wall calc sheet" }, [page]);
+  // "shear0 shear wall" stutters now that the product name is the word itself.
+  const doc = add("Document", { title: "shear wall calc sheet — shear0" }, [page]);
   return { root: doc, elements } as unknown as Spec;
 }

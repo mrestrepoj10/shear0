@@ -24,7 +24,7 @@
  * expensive rebuilds exactly as before.
  */
 
-import type { WallReport, WallInput } from "@kern/engine";
+import type { WallReport, WallInput } from "@shear0/engine";
 import dynamic from "next/dynamic";
 import { TraceReport } from "@/components/design/trace-report";
 import { UtilizationList } from "@/components/design/utilization-list";

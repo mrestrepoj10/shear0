@@ -7,7 +7,7 @@
  */
 
 import { renderToBuffer } from "@json-render/react-pdf";
-import { checkOrdinaryWall, checkSpecialWall, type WallInput } from "@kern/engine";
+import { checkOrdinaryWall, checkSpecialWall, type WallInput } from "@shear0/engine";
 import type { NextRequest } from "next/server";
 import { EXAMPLE_1 } from "@/lib/presets";
 import { registry } from "@/lib/report/pdf-registry";
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
   return new Response(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": 'attachment; filename="kern-calc-sheet.pdf"',
+      "Content-Disposition": 'attachment; filename="shear0-calc-sheet.pdf"',
       "Cache-Control": "no-store",
     },
   });

@@ -9,7 +9,7 @@
  * code can keep importing from one place.
  */
 
-import { GRADE60, type BarSize, type WallInput } from "@kern/engine";
+import { GRADE60, type BarSize, type WallInput } from "@shear0/engine";
 
 export const BAR_SIZES: BarSize[] = ["3", "4", "5", "6", "7", "8", "9", "10", "11"];
 export const K_VALUES = [0.8, 1.0, 2.0] as const;
