@@ -39,6 +39,15 @@ import { decodeWallInput, encodeWallInput } from "@/lib/wall-codec";
 import { cn } from "@/lib/utils";
 
 const STORAGE_KEY = "shear0.pinned-options.v1";
+/**
+ * The key this store used before the project was renamed. `sessionStorage`
+ * survives a reload, so a tab that was open across the deploy still holds its
+ * pins under the old name — and the URL cannot recover them, it carries only
+ * the current wall. Read it as a fallback so nobody's comparison silently
+ * empties itself; the next pin writes under the new key and the old one is
+ * never read again. Safe to delete once the rename is a release or two old.
+ */
+const LEGACY_STORAGE_KEY = "kern.pinned-options.v1";
 const MAX_OPTIONS = 3;
 const OPTION_LETTERS = ["A", "B", "C"] as const;
 const CURVE_POINTS = 80;
@@ -79,7 +88,10 @@ function readPins(): string[] {
   if (!pinsLoaded) {
     pinsLoaded = true;
     try {
-      const raw = sessionStorage.getItem(STORAGE_KEY);
+      // Read-only fallback, never a write: this runs inside the
+      // `useSyncExternalStore` snapshot, which must stay free of side effects.
+      const raw =
+        sessionStorage.getItem(STORAGE_KEY) ?? sessionStorage.getItem(LEGACY_STORAGE_KEY);
       const parsed: unknown = raw === null ? [] : JSON.parse(raw);
       if (Array.isArray(parsed)) {
         pinsCache = parsed.filter((p): p is string => typeof p === "string");
