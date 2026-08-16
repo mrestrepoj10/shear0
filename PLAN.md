@@ -1,4 +1,4 @@
-# kern — Implementation Plan
+# shear0 — Implementation Plan
 
 Open-source concrete shear wall design tool per ACI 318-19. Fast, visual, and **never a black box**:
 every number the app produces carries a machine-readable trace back to the code section, formula,
@@ -42,16 +42,16 @@ factored demands), slender out-of-plane method (11.8), shear friction (22.9), SI
 ## 2. Architecture
 
 ```
-kern/
+shear0/
 ├── apps/web              # Next.js 16.3 SPA (client-heavy, App Router)
-├── packages/engine       # @kern/engine — pure TypeScript, zero deps, framework-free
+├── packages/engine       # @shear0/engine — pure TypeScript, zero deps, framework-free
 ├── docs/research         # extracted specs + fixtures source (committed)
 └── references            # source PDFs (gitignored)
 ```
 
 ### `packages/engine` — the core product
 Pure TS library, no DOM, no React, no runtime deps. Everything the UI shows is computed here.
-Published intent: usable standalone (`import { checkWall } from '@kern/engine'`) so the OSS
+Published intent: usable standalone (`import { checkWall } from '@shear0/engine'`) so the OSS
 community can build CLIs/plugins on it.
 
 **Trace-first value model.** Engine functions do not return bare numbers; they return trace nodes:
@@ -154,7 +154,7 @@ same phase-row can run in parallel; phases are sequential gates. I review diffs 
 run the app.
 
 ### Phase 0 — Engine foundations (1 agent)
-**T0** `packages/engine` scaffold: package.json (`@kern/engine`, type module, zero deps), tsconfig,
+**T0** `packages/engine` scaffold: package.json (`@shear0/engine`, type module, zero deps), tsconfig,
 vitest, turbo wiring; `units.ts` (Q helper, kip/in/psi/ft conversions), `trace.ts` (Traced,
 CheckResult, DAG helpers, trace integrity invariants + tests), `materials.ts` (concrete: Ec, β1
 table 22.2.2.4.3, λ; rebar: US bar table #3–#11 with db/Ab; Grade 60/80), `wall.ts` (WallInput
@@ -228,4 +228,4 @@ tests green.*
 **Open (non-blocking):**
 - Whether `/design` should eventually support multiple walls / story envelopes (data model keeps
   demands as a list to leave room).
-- Name/branding of the published npm package (`@kern/engine` placeholder).
+- Name/branding of the published npm package (`@shear0/engine` placeholder).

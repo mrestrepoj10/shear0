@@ -34,7 +34,7 @@ import {
   type CheckResult,
   type WallInput,
   type WallReport,
-} from "@kern/engine";
+} from "@shear0/engine";
 import { memo, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { num } from "@/components/design/status";
@@ -42,7 +42,7 @@ import { hasNoLoads, normalizedStatus } from "@/components/design/results-summar
 import { BAR_SIZES } from "@/lib/presets";
 import { useWallDispatch } from "@/lib/wall-state";
 import { cn } from "@/lib/utils";
-import type { CheckStatus } from "@kern/engine";
+import type { CheckStatus } from "@shear0/engine";
 
 /** The practical iteration range; the full BAR_SIZES list would double the rows for sizes nobody puts in a wall web. */
 const MAP_BARS: BarSize[] = ["4", "5", "6", "7", "8"];

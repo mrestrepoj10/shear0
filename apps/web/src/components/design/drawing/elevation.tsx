@@ -18,7 +18,7 @@
  * below it and the relaxed spacing of Table 18.10.6.5(b) called out above.
  */
 
-import { BARS, barPositions, kipFtToKipIn, type WallInput } from "@kern/engine";
+import { BARS, barPositions, kipFtToKipIn, type WallInput } from "@shear0/engine";
 import { DimLine } from "./dim-line";
 import { Drawing, HAIRLINE, Note, paddedViewBox } from "./drawing";
 import { dim } from "./format";

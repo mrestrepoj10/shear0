@@ -5,7 +5,7 @@
  * Everything below the provider is a pure function of `WallInput`.
  */
 
-import type { WallInput } from "@kern/engine";
+import type { WallInput } from "@shear0/engine";
 import { useEffect, useRef } from "react";
 import { notify } from "@/components/ui/sonner";
 import { InputsPanel, WallToolbar } from "@/components/design/inputs-panel";
@@ -81,13 +81,13 @@ function Workspace({ linkFailed }: { linkFailed: boolean }) {
           {/* Only offered when there is a report to render. `download` saves
               whatever the server sends regardless of status, so on a wall the
               engine cannot evaluate this link would hand the user the route's
-              422 JSON body saved as `kern-calc-sheet.pdf` — a file that opens
+              422 JSON body saved as `shear0-calc-sheet.pdf` — a file that opens
               in nothing. The calc sheet link stays: that route degrades to an
               explanation of what is wrong with the inputs. */}
           {report === null ? null : (
             <a
               href={`/api/report/pdf?${WALL_PARAM}=${encodeWallInput(input)}`}
-              download="kern-calc-sheet.pdf"
+              download="shear0-calc-sheet.pdf"
               className="font-mono text-xs2 text-muted-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
             >
               pdf

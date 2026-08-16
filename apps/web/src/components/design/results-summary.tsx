@@ -7,8 +7,8 @@
  * trace report (T2c) will expand.
  */
 
-import type { CheckResult, CheckStatus, Demands, WallReport, Traced } from "@kern/engine";
-import { fmt } from "@kern/engine";
+import type { CheckResult, CheckStatus, Demands, WallReport, Traced } from "@shear0/engine";
+import { fmt } from "@shear0/engine";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RefBadge, StatusBadge, UtilizationBar, statusText } from "@/components/design/status";
 import { cn } from "@/lib/utils";

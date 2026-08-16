@@ -25,14 +25,16 @@ export function Navbar() {
       <div className="mx-auto flex h-12 max-w-5xl items-center gap-6 px-4">
         <Link
           href="/"
-          // The product name is a word in no language: machine translation
-          // turns "kern" into "core"/"kernel" and the brand disappears from
-          // its own header.
+          // The product name reads as an ordinary English noun — and one this
+          // app uses as a *technical term* on every other screen — so machine
+          // translation happily renders it "cisaillement0"/"cizalla0" and the
+          // brand disappears from its own header. A name that is also
+          // vocabulary needs this more than an invented word did.
           translate="no"
           className="py-1.5 text-sm font-semibold tracking-tight"
           {...(pathname === "/" ? { "aria-current": "page" as const } : {})}
         >
-          kern
+          shear0
         </Link>
         <nav className="flex items-center gap-4 text-sm text-muted-foreground">
           {links.map((l) => {

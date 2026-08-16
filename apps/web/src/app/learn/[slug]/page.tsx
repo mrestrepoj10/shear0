@@ -7,7 +7,7 @@ import { TraceWalkthrough } from "@/components/learn/trace-walkthrough";
 import { LEARN_TOPICS, learnTopic, type LearnCase } from "@/components/learn/topics";
 import { DISCLAIMER_SENTENCE } from "@/lib/copy";
 import { encodeWallInput } from "@/lib/wall-codec";
-import { fmt, type Demands } from "@kern/engine";
+import { fmt, type Demands } from "@shear0/engine";
 
 /**
  * One provision, one wall, one engine call, fully expanded.
@@ -30,20 +30,20 @@ export async function generateMetadata({
   const topic = learnTopic(slug);
   if (topic === undefined) return {};
   const title = `${topic.title} — ACI 318-19 §${topic.ref.section}`;
-  const description = `${topic.blurb}. A step-by-step walkthrough of ACI 318-19 §${topic.ref.section}, generated from kern's own calculation trace on a worked example.`;
+  const description = `${topic.blurb}. A step-by-step walkthrough of ACI 318-19 §${topic.ref.section}, generated from shear0's own calculation trace on a worked example.`;
   return {
     title,
     description,
     // These nine pages are the ones people link to each other, so they are the
     // ones that need a card. Explicit rather than inherited so the OG title
-    // carries the provision instead of the bare "kern" from the root.
+    // carries the provision instead of the bare "shear0" from the root.
     //
     // No `opengraph-image` yet: a generated card would want the wall drawing
     // and the governing number rendered per topic, which is a design job of its
     // own. Tracked as follow-up; the text card is correct in the meantime.
     openGraph: {
       type: "article",
-      siteName: "kern",
+      siteName: "shear0",
       title,
       description,
       url: `/learn/${topic.slug}`,
@@ -153,7 +153,7 @@ export default async function LearnTopicPage({ params }: PageProps<"/learn/[slug
       </section>
 
       <p className="mt-10 max-w-prose font-mono text-xs2 text-muted-foreground">
-        every step above is the engine&rsquo;s own output — kern does not restate the code in prose
+        every step above is the engine&rsquo;s own output — shear0 does not restate the code in prose
         and then compute it separately. {DISCLAIMER_SENTENCE}
       </p>
     </article>

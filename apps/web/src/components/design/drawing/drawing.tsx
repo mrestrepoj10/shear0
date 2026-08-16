@@ -30,7 +30,7 @@ interface DrawingContextValue {
 }
 
 const DrawingContext = createContext<DrawingContextValue>({
-  uid: "kern-drawing",
+  uid: "shear0-drawing",
   fontSize: 11,
 });
 

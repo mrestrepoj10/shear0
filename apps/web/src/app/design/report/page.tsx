@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { checkOrdinaryWall, checkSpecialWall, type WallInput } from "@kern/engine";
+import { checkOrdinaryWall, checkSpecialWall, type WallInput } from "@shear0/engine";
 import { ReportView } from "@/components/report/report-view";
 import { buildReportSpec } from "@/lib/report/build-spec";
 import { WALL_PARAM, decodeWallInput, encodeWallInput } from "@/lib/wall-codec";

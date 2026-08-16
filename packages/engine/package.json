@@ -1,5 +1,5 @@
 {
-  "name": "@kern/engine",
+  "name": "@shear0/engine",
   "version": "0.0.0",
   "private": true,
   "description": "Traceable ACI 318-19 concrete shear wall design calculations. Every value carries the code section, formula and substitution that produced it.",
@@ -22,7 +22,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "lint": "echo \"@kern/engine: no lint configured\""
+    "lint": "echo \"@shear0/engine: no lint configured\""
   },
   "devDependencies": {
     "typescript": "^5.9.2",

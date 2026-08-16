@@ -1,4 +1,4 @@
-# kern — interface review (better-ui / better-typography / better-colors / better-writing)
+# shear0 — interface review (better-ui / better-typography / better-colors / better-writing)
 
 > Reviewer: interface panel agent (Opus 5), 2026-08-13. Read-only diagnostic; nothing applied.
 > Production build on :3803, Chrome 151 headless via CDP, both themes, 390/768/1024/1280/1440 px.

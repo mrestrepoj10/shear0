@@ -1,4 +1,4 @@
-# kern
+# shear0
 
 Open-source concrete shear wall designer, per **ACI 318-19**. Enter one rectangular wall and its
 factored demands, get every Chapter 11 (and, for special walls, §18.10) check live as you type.
@@ -87,7 +87,7 @@ match the printed values to the handbook's own rounding. The values the handbook
 interaction-diagram spreadsheet come from a different numerical model than our fiber section, so
 they are held to looser tolerances and the deltas are printed by the suite:
 
-| quantity | handbook | kern | delta |
+| quantity | handbook | shear0 | delta |
 |---|---|---|---|
 | Ex. 1 φMn at Pu = 1015 kip | 24,600 ft-kip | 24,593 | -0.03% |
 | Ex. 2 φMn at Pu = 1015 kip | 40,200 ft-kip | 40,195 | -0.01% |
@@ -106,9 +106,9 @@ it.
 ## architecture
 
 ```
-kern/
+shear0/
 ├── apps/web          # Next.js 16.3 SPA, App Router
-├── packages/engine   # @kern/engine: pure TypeScript, zero runtime deps
+├── packages/engine   # @shear0/engine: pure TypeScript, zero runtime deps
 ├── docs/research     # extracted provision inventory + fixture source (committed)
 └── references        # source PDFs (gitignored)
 ```
@@ -128,7 +128,7 @@ through wrappers in `src/components/charts`.
 
 ## disclaimer
 
-**kern is a calculation aid, not an engineer.**
+**shear0 is a calculation aid, not an engineer.**
 
 Output from this software must be reviewed, verified and accepted by a licensed professional
 engineer before it is used for any purpose. It is not a substitute for engineering judgment,

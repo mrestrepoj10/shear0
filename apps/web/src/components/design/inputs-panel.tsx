@@ -20,7 +20,7 @@ import {
   type DistributedLayer,
   type SeismicParams,
   type WallInput,
-} from "@kern/engine";
+} from "@shear0/engine";
 import { Plus, RotateCcw, X } from "lucide-react";
 import type { ReactNode } from "react";
 import {

@@ -16,7 +16,7 @@ import {
   type Traced,
   type WallInput,
   type WallReport,
-} from "@kern/engine";
+} from "@shear0/engine";
 
 export interface ReportMeta {
   /** canonical share link for this wall */

@@ -1,10 +1,10 @@
-# kern — design engineering review (emil-design-eng) + Sonner proposal
+# shear0 — design engineering review (emil-design-eng) + Sonner proposal
 
 > Reviewer: design-eng agent (Opus 5), 2026-08-13. Read-only diagnostic; nothing applied.
 
 ## 1. Verdict
 
-kern is *substantively* excellent and superficially inert. The information design is the best thing here: the verdict strip, the utilization ruler, the demand→capacity line under every check, the true-scale drawings, and the trace DAG rendered from the engine's own nodes rather than a second implementation — that's real craft, and the SSR discipline (KaTeX server-rendered, `?w=` decoded server-side, learn pages statically generated) is better than most production apps. But the whole app has **six** transition declarations outside `components/ui/` — three of them chevron rotations. Nothing hovers, nothing settles, nothing acknowledges you. It reads less like restraint and more like the motion pass never happened, because the one thing that *is* animated (the utilization bar's `width`) is the one thing that shouldn't be.
+shear0 is *substantively* excellent and superficially inert. The information design is the best thing here: the verdict strip, the utilization ruler, the demand→capacity line under every check, the true-scale drawings, and the trace DAG rendered from the engine's own nodes rather than a second implementation — that's real craft, and the SSR discipline (KaTeX server-rendered, `?w=` decoded server-side, learn pages statically generated) is better than most production apps. But the whole app has **six** transition declarations outside `components/ui/` — three of them chevron rotations. Nothing hovers, nothing settles, nothing acknowledges you. It reads less like restraint and more like the motion pass never happened, because the one thing that *is* animated (the utilization bar's `width`) is the one thing that shouldn't be.
 
 The three things most holding it back:
 

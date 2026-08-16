@@ -12,7 +12,7 @@
  * bought. Nothing is recomputed here — the drawing reads the slice.
  */
 
-import { barPositions, beta1, designSliceAt, sectionAt, type WallInput } from "@kern/engine";
+import { barPositions, beta1, designSliceAt, sectionAt, type WallInput } from "@shear0/engine";
 import { DimLine } from "./dim-line";
 import { Drawing, Eps, HAIRLINE, Note, paddedViewBox } from "./drawing";
 import { dim, strain } from "./format";

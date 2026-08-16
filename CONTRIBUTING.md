@@ -1,6 +1,6 @@
-# contributing to kern
+# contributing to shear0
 
-Thanks for looking. kern is a calculation tool for structural engineers, so the bar for a change is
+Thanks for looking. shear0 is a calculation tool for structural engineers, so the bar for a change is
 not "the tests are green", it is "an engineer can read the trace and agree with it".
 
 Everything here assumes you have read the disclaimer in `README.md` and understand that this
@@ -10,7 +10,7 @@ project produces aids to design, not designs.
 
 Most work is one of:
 
-1. **a new check** (a provision kern does not implement yet),
+1. **a new check** (a provision shear0 does not implement yet),
 2. **a correction** to an existing check (with the code section that says so),
 3. **UI or drawing work** in `apps/web`,
 4. **research**: transcribing a provision or a published worked example into `docs/research/`.
@@ -24,7 +24,7 @@ are not.
 
 Add the provision to `docs/research/aci-318-19-wall-provisions.md`: section number, the equation
 verbatim, every variable, every limit, every table row, and the conditions under which it applies.
-Note the edition and the units of the coefficient set (kern is in-lb internally). If the provision
+Note the edition and the units of the coefficient set (shear0 is in-lb internally). If the provision
 is ambiguous, say so in the doc rather than resolving it silently in code.
 
 Do not commit the ACI documents themselves. `references/` is gitignored on purpose.
@@ -59,7 +59,7 @@ Conventions that matter:
   pattern), and the reason for it in `note`.
 - **Units are canonical inside the engine**: kip, in., psi. Convert at the boundary with the
   helpers in `src/units.ts`. `fmtTex` formats numbers for substitution strings.
-- **No runtime dependencies.** `@kern/engine` has zero of them and must keep zero. No DOM, no
+- **No runtime dependencies.** `@shear0/engine` has zero of them and must keep zero. No DOM, no
   React, no date libraries, no unit libraries.
 
 ### 3. fixture it against a published worked example
@@ -89,7 +89,7 @@ Also test the **boundaries**, not just the example: each branch of a table, each
 threshold, the interpolation endpoints (`h_w/ℓ_w` = 1.5, 2.0, 2.5), a demand just above and just
 below a trigger.
 
-If kern and the source disagree, do not widen the tolerance. Find out why, and if the disagreement
+If shear0 and the source disagree, do not widen the tolerance. Find out why, and if the disagreement
 is real, write it down and let the check report `ng` (see the boundary-element length test in
 `test/special-wall.test.ts` for the precedent).
 
@@ -111,8 +111,8 @@ check needs a *new input field* (`components/design/inputs-panel.tsx`, plus the 
 
 ```sh
 pnpm install
-pnpm -F @kern/engine test          # the fast loop
-pnpm -F @kern/engine exec vitest   # ... in watch mode
+pnpm -F @shear0/engine test          # the fast loop
+pnpm -F @shear0/engine exec vitest   # ... in watch mode
 pnpm test                          # everything, via turbo
 pnpm lint
 pnpm typecheck

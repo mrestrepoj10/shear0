@@ -1,7 +1,7 @@
 /**
  * Interface copy that has to read the same wherever it appears.
  *
- * The disclaimer is the one sentence in kern with legal weight, and it was
+ * The disclaimer is the one sentence in shear0 with legal weight, and it was
  * written three different ways — a footer line, a markdown epilogue and a learn
  * paragraph — so a reader comparing an exported report against the page found
  * three different promises. One string, three renderings that differ only in

@@ -3,7 +3,7 @@
 > Extracted from the ACI Reinforced Concrete Design Handbook MNL-17(21) Vol. 1
 > (`references/aci-design-handbook-mnl-17-21.pdf`) on 2026-08-13.
 > Chapter 10 "Structural Reinforced Concrete Walls," printed pp. 433–466 = PDF pp. 434–467.
-> These two examples are the **verification oracle** for `@kern/engine` — every numeric intermediate
+> These two examples are the **verification oracle** for `@shear0/engine` — every numeric intermediate
 > below becomes a test assertion (see tolerance policy in PLAN.md).
 
 **Chapter inventory of worked examples (there are exactly two):**

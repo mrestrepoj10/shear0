@@ -21,7 +21,7 @@
 
 import type { Spec } from "@json-render/core";
 import { JSONUIProvider, defineRegistry, Renderer } from "@json-render/react";
-import type { CheckStatus } from "@kern/engine";
+import type { CheckStatus } from "@shear0/engine";
 import { StatusBadge, UtilizationBar, num } from "@/components/design/status";
 import { Tex } from "@/components/design/tex";
 import { Button } from "@/components/ui/button";
@@ -153,7 +153,7 @@ export function ReportView({ spec, encoded }: { spec: Spec; encoded: string }) {
         <Button variant="outline" size="sm" onClick={() => window.print()}>
           print
         </Button>
-        <Button size="sm" render={<a href={pdfHref} download="kern-calc-sheet.pdf" />}>
+        <Button size="sm" render={<a href={pdfHref} download="shear0-calc-sheet.pdf" />}>
           download pdf
         </Button>
       </div>

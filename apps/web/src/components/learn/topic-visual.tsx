@@ -13,7 +13,7 @@
  * topic whose check is not `flexure.axial` simply gets an uncolored marker.
  */
 
-import type { CheckResult, Demands, WallInput, WallReport } from "@kern/engine";
+import type { CheckResult, Demands, WallInput, WallReport } from "@shear0/engine";
 import { DriftPanel } from "@/components/design/drift-panel";
 import { WallElevation } from "@/components/design/drawing/elevation";
 import { WallPlanSection } from "@/components/design/drawing/plan-section";

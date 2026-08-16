@@ -14,8 +14,8 @@
  * shape.
  */
 
-import type { CheckStatus, CodeRef } from "@kern/engine";
-import { fmt } from "@kern/engine";
+import type { CheckStatus, CodeRef } from "@shear0/engine";
+import { fmt } from "@shear0/engine";
 import type { CSSProperties } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";

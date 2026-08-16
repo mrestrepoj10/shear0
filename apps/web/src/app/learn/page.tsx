@@ -6,7 +6,7 @@ import { LEARN_GROUPS, LEARN_TOPICS, topicsInGroup } from "@/components/learn/to
 export const metadata: Metadata = {
   title: "learn",
   description:
-    "Walkthroughs of the ACI 318-19 shear wall provisions, generated from kern's own calculation traces — every step is the engine's real output on a real wall.",
+    "Walkthroughs of the ACI 318-19 shear wall provisions, generated from shear0's own calculation traces — every step is the engine's real output on a real wall.",
 };
 
 /**
@@ -20,7 +20,7 @@ export default function LearnPage() {
     <div className="mx-auto max-w-5xl px-4 py-16">
       <h1 className="text-2xl font-semibold tracking-tight text-balance">learn</h1>
       <p className="mt-3 max-w-prose font-sans text-pretty text-sm text-muted-foreground">
-        kern&rsquo;s checks are traceable: every number carries the code section, the formula and
+        shear0&rsquo;s checks are traceable: every number carries the code section, the formula and
         the substituted values that produced it. These walkthroughs are made of that. Each one runs
         the real engine on a real wall — the two MNL-17(21) handbook examples — and shows every step
         it took, expanded. Nothing on these pages is a second implementation of the code; if the

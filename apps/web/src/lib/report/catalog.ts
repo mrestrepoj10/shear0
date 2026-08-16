@@ -1,5 +1,5 @@
 /**
- * The kern report catalog — the json-render vocabulary a calc sheet is written
+ * The shear0 report catalog — the json-render vocabulary a calc sheet is written
  * in.
  *
  * A report is *data* before it is markup: the engine already produces a traced

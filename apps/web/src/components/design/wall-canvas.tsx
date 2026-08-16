@@ -13,7 +13,7 @@
  * render standalone.) Keep the props interface and the export name.
  */
 
-import { fmt, type WallReport, type WallInput } from "@kern/engine";
+import { fmt, type WallReport, type WallInput } from "@shear0/engine";
 import { memo } from "react";
 import { useSelection } from "@/lib/wall-state";
 import { WallElevation } from "@/components/design/drawing/elevation";

@@ -9,7 +9,7 @@ opens: `turbo lint typecheck test build --force` + targeted runtime verification
 specific findings (grep SSR HTML / headless check), then open the PR for your review.
 
 ## Step 0 — prerequisite (one-time)
-Create `github.com/frame-labs/kern` and push `main`. **Decision needed: public now or
+Create `github.com/frame-labs/shear0` and push `main`. **Decision needed: public now or
 private until the fix PRs land.** CI (`.github/workflows/ci.yml`) starts running on PRs
 immediately either way.
 

@@ -1,4 +1,4 @@
-# kern — Web Interface Guidelines compliance review
+# shear0 — Web Interface Guidelines compliance review
 
 > Reviewer: web-design-guidelines agent (Opus 5), 2026-08-13. Read-only diagnostic; nothing applied.
 
@@ -52,8 +52,8 @@
 | 19 | P2 | Accessibility — skip link | `app/layout.tsx:67` | Zero `a[href^="#"]` on every route; `<main>` has no `id`. Five tab stops of chrome before content. | `<a href="#main" class="sr-only focus:not-sr-only …">Skip to content</a>` + `<main id="main">`. |
 | 20 | P2 | Accessibility — `scroll-margin-top` | `app/learn/[slug]/page.tsx:95` | Sections carry ids but no `scroll-margin-top`; sticky header 49 px (94 px with verdict strip), deep links land under it. | `scroll-mt-16` on sections; `scroll-mt-28` for `/design` anchors. |
 | 21 | P2 | Theming — `theme-color` | `app/layout.tsx:17-20` | No `theme-color` meta. (`color-scheme` per theme is correct via next-themes ✓; viewport does not disable zoom ✓.) | Export `viewport.themeColor` for both schemes. |
-| 22 | P2 | Metadata / SEO | `app/layout.tsx:17-20`; `app/design/page.tsx:5` | No `metadataBase`, no `title.template` (tab reads bare "design"/"learn"), no `openGraph`/`twitter`, no manifest/apple-touch-icon. The nine learn pages deserve share cards. | `title: { default: 'kern', template: '%s · kern' }`, `metadataBase`, `opengraph-image.tsx` for `/learn/[slug]`. |
-| 23 | P2 | Locale — `translate="no"` | `status.tsx:65-78`, drawing Notes, `RefBadge` | Auto-translation will garble `§18.10.6.4`, `#5`, `f'c`, `ℓbe`, `kern`. | `translate="no"` on `RefBadge`, unit spans, brand. |
+| 22 | P2 | Metadata / SEO | `app/layout.tsx:17-20`; `app/design/page.tsx:5` | No `metadataBase`, no `title.template` (tab reads bare "design"/"learn"), no `openGraph`/`twitter`, no manifest/apple-touch-icon. The nine learn pages deserve share cards. | `title: { default: 'shear0', template: '%s · shear0' }`, `metadataBase`, `opengraph-image.tsx` for `/learn/[slug]`. |
+| 23 | P2 | Locale — `translate="no"` | `status.tsx:65-78`, drawing Notes, `RefBadge` | Auto-translation will garble `§18.10.6.4`, `#5`, `f'c`, `ℓbe`, `shear0`. | `translate="no"` on `RefBadge`, unit spans, brand. |
 | 24 | P2 | Safe areas | `results-summary.tsx:101`; `design-workspace.tsx:25`; `layout.tsx:31-47` | Verdict strip and footer are full-bleed with no `env(safe-area-inset-*)`. No bottom-fixed UI, so landscape-notch only. Positive: zero horizontal scroll at 375 px on the heaviest route; wide KaTeX substitutions properly contained by `overflow-x-auto`. | `padding-inline: max(1rem, env(safe-area-inset-left))` on full-bleed rows. |
 | 25 | P2 | State — deep-link stateful UI | `trace-report.tsx:280-281` | Trace expansion is `useState` only — a shared `?w=` link cannot share "look at this expanded node", which is the point of the trace. | Serialise open check ids into a second query param. |
 | 26 | P2 | Destructive actions | `inputs-panel.tsx:778` (remove load case), `:606` (remove SBE), `:881` (reset) | Immediate, no confirm/undo; URL sync uses `replaceState` so Back doesn't recover either. | Undo toast, or `pushState` on structural edits. |
@@ -61,7 +61,7 @@
 | 28 | P2 | `aria-expanded` without `aria-controls` | `trace-report.tsx:211,297` | 15 `aria-expanded` on `/design`, all with `aria-controls: null`. (`/learn` uses native `<details open>` — correct semantics, works with JS off. Genuine pass.) | Give the panel an `id` and wire `aria-controls`. |
 | 29 | P2 | Copy — errors need a next step | `design-workspace.tsx:25-27,39-42` | "cannot evaluate this wall" + raw exception string. States the problem, not the fix. | "…— check that ℓw, h and spacing are greater than zero." |
 | 30 | P2 | Dead affordance [static-only] | `lib/wall-state.tsx:248` vs `drawing/plan-section.tsx:20-21,209` | `useSelection()` has **no consumer** anywhere (grepped). Plan section publishes selection; the promised inputs-panel highlight is unimplemented. | Consume it in `ReinforcementCard`, or delete the context. |
-| 31 | P2 | Locale — number formats [static-only] | `@kern/engine` `fmt`, app-wide | Grouped output (`18,600`) is engine-side, locked to en-US separators. Correct for a US-code tool. | Leave as-is if ACI-only is deliberate; else `Intl.NumberFormat`. |
+| 31 | P2 | Locale — number formats [static-only] | `@shear0/engine` `fmt`, app-wide | Grouped output (`18,600`) is engine-side, locked to en-US separators. Correct for a US-code tool. | Leave as-is if ACI-only is deliberate; else `Intl.NumberFormat`. |
 
 **Verified as passing, worth recording:** KaTeX emits `.katex-mathml` (readable `<math>`) plus `.katex-html[aria-hidden="true"]` — measured 192/192, so no AT duplication; `tex.tsx` SSR decision sound, 0 hydration warnings. All three drawings carry `role`, `aria-label`, `<title>`, `<desc>`; `drawing.tsx:81-87` correctly downgrades the interactive plan section from `img` to `group`. Every icon-only button has an `aria-label`; decorative icons `aria-hidden`. Inputs are 16 px on mobile (no iOS zoom). Status never color-only (word + `data-status` always; both status tokens clear 5:1 light / 7:1 dark). Zero horizontal scroll at 375 px. Zero console errors.
 

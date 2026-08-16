@@ -5,7 +5,7 @@
  * computes anything. A topic names a provision, says in a few sentences what it
  * guards against and when it applies, and then hands `/learn/[slug]` a wall and
  * the engine function to run on it. The numbers on the page are whatever
- * `@kern/engine` produced — the same call `/design` makes — rendered as a fully
+ * `@shear0/engine` produced — the same call `/design` makes — rendered as a fully
  * expanded trace. Fix a coefficient in the engine and the lesson changes with it.
  *
  * Plain module, no `"use client"`: the pages are server components, so the
@@ -37,7 +37,7 @@ import {
   type CodeRef,
   type Demands,
   type WallInput,
-} from "@kern/engine";
+} from "@shear0/engine";
 import { EXAMPLE_1, EXAMPLE_2 } from "@/lib/presets";
 
 /**
@@ -177,7 +177,7 @@ export const LEARN_TOPICS: LearnTopic[] = [
       "example 1 is slender — hw/ℓw = 3.29 — so αc = 2 with no interpolation, and the node's own note says which branch it took.",
       "the second run shortens hw to 403 in. (hw/ℓw = 1.20) and αc jumps to 3. Between 1.5 and 2.0 the trace shows the interpolation arithmetic in place of a constant.",
       "φVn = 1,209 kip against Vu = 235 kip: the concrete term alone is 570 kip and the ρt·fyt term is the rest. This wall is nowhere near shear-controlled — which is exactly why the §11.6 threshold is the interesting check for it.",
-      "hw/ℓw must be taken as the larger of the entire-wall and segment ratios (11.5.4.2); kern uses the entire-wall ratio and flags that in the αc node.",
+      "hw/ℓw must be taken as the larger of the entire-wall and segment ratios (11.5.4.2); shear0 uses the entire-wall ratio and flags that in the αc node.",
     ],
     visual: "plan",
     cases: [
@@ -208,7 +208,7 @@ export const LEARN_TOPICS: LearnTopic[] = [
     group: "ordinary",
     blurb: "the interaction surface built from the real bar layout, and φ from εt",
     summary:
-      "A bearing wall is checked on the full axial–moment interaction surface rather than on moment alone: 11.5.1.1 requires φPn ≥ Pu and φMn ≥ Mu with interaction considered, and 11.5.2.1 sends the strength calculation to 22.4. kern builds the surface from the actual bar layout by strain compatibility — εcu = 0.003 at the extreme compression fiber, the equivalent rectangular stress block of 22.2.2.4, and φ from Table 21.2.2 as a function of the extreme tension strain εt — plus the φPn,max cap of 22.4.2.1. Capacity is read as the vertical slice: φMn where the design curve carries the factored Pu.",
+      "A bearing wall is checked on the full axial–moment interaction surface rather than on moment alone: 11.5.1.1 requires φPn ≥ Pu and φMn ≥ Mu with interaction considered, and 11.5.2.1 sends the strength calculation to 22.4. shear0 builds the surface from the actual bar layout by strain compatibility — εcu = 0.003 at the extreme compression fiber, the equivalent rectangular stress block of 22.2.2.4, and φ from Table 21.2.2 as a function of the extreme tension strain εt — plus the φPn,max cap of 22.4.2.1. Capacity is read as the vertical slice: φMn where the design curve carries the factored Pu.",
     notes: [
       "at Pu = 1015 kip the solved neutral axis is c = 46.4 in., giving εt = 0.0185 — well past εty + 0.003, so the section is tension-controlled and φ = 0.90.",
       "φMn = 24,593 kip-ft against ACI's own interaction-diagram spreadsheet at 24,600 kip-ft: the fiber engine and the published aid agree to about 0.03%.",
@@ -295,7 +295,7 @@ export const LEARN_TOPICS: LearnTopic[] = [
       "Mpr/Mu = 1.34 here, below the 1.5 floor, so Ωv = 1.5 governs. That floor may be reduced by a detailed analysis but never below 1.0.",
       "ns = 8 stories beats the 0.007·hwcs = 7.73 floor, so ωv = 1.3 + 8/30 = 1.567. The floor is written in inches — a unit trap the trace resolves explicitly.",
       "Ve = 1.5 × 1.567 × 470 = 1,105 kip, comfortably under the 3Vu = 1,410 kip cap.",
-      "φ = 0.60: Vn = 2,049 kip is less than the shear that develops Mn, so 21.2.4.1 applies on kern's handbook-conservative default. 18.10.4.6 exempts walls designed by 18.10.6.2 from 21.2.4.1 — which reading is used is a setting, and the trace names it.",
+      "φ = 0.60: Vn = 2,049 kip is less than the shear that develops Mn, so 21.2.4.1 applies on shear0's handbook-conservative default. 18.10.4.6 exempts walls designed by 18.10.6.2 from 21.2.4.1 — which reading is used is a setting, and the trace names it.",
     ],
     visual: "elevation",
     cases: [
@@ -346,7 +346,7 @@ export const LEARN_TOPICS: LearnTopic[] = [
     summary:
       "Once a special boundary element is required, 18.10.6.4 sizes and confines it. It runs from the extreme compression fiber a length of at least max(c − 0.1ℓw, c/2) (a); it is at least hu/16 wide over that length (b), and at least 12 in. wide where hwcs/ℓw ≥ 2.0, the wall is continuous with a single critical section, and c/ℓw ≥ 3/8 (c). Confinement follows 18.7.5.2 and 18.7.5.3 with the spacing limit taken as one-third of the least boundary dimension, laterally supported bars at hx ≤ min(14 in., 2·bbe/3) (f), and the hoop amount from Table 18.10.6.4(g): Ash/(s·bc) ≥ max(0.3(Ag/Ach − 1)·f'c/fyt, 0.09·f'c/fyt).",
     notes: [
-      "this walkthrough ends ng, on purpose. kern's fiber engine solves c = 68.7 in. where ACI's spreadsheet gives 67.9 in., so 18.10.6.4(a) asks for ℓbe = 35.1 in. against the 34 in. the handbook detailed. The trace is what lets you see that it is the c solve that moved, not the detailing rule.",
+      "this walkthrough ends ng, on purpose. shear0's fiber engine solves c = 68.7 in. where ACI's spreadsheet gives 67.9 in., so 18.10.6.4(a) asks for ℓbe = 35.1 in. against the 34 in. the handbook detailed. The trace is what lets you see that it is the c solve that moved, not the detailing rule.",
       "the width check reports the governing of the two 18.10.6.2(b) options: √(0.025·c·ℓw) = 24.0 in. is not met by b = 16 in., so option (iii) carries it — drift capacity δc/hwcs = 0.0171 against a demand of 0.0163.",
       "hx = 10 in. is checked against min(14 in., 2b/3 = 10.7 in.): the 2b/3 term governs on a narrow boundary element, which is easy to miss reading only the 14 in. limit.",
       "the Ash requirement is reported as required legs against provided legs, so the answer is a number of crossties rather than an area still to be converted.",

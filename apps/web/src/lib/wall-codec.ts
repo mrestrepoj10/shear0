@@ -36,7 +36,7 @@ import {
   type SbeProvided,
   type SeismicParams,
   type WallInput,
-} from "@kern/engine";
+} from "@shear0/engine";
 import { BAR_SIZES, EXAMPLE_1 } from "./presets";
 
 export const WALL_PARAM = "w";
