@@ -46,6 +46,7 @@ export {
   derive,
   flattenTrace,
   input,
+  stampEdition,
   traceToMarkdown,
   validateTrace,
 } from "./trace";

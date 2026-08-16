@@ -1,4 +1,6 @@
+import { stampEdition } from "../trace";
 import type { WallInput } from "../wall";
+import { unitsOf } from "../wall";
 import { checkCurtains, checkMinThickness, checkSpacing, checkTies } from "./detailing";
 import { checkFlexureAxial } from "./flexure-axial";
 import { checkMinReinforcement } from "./min-reinforcement";
@@ -27,6 +29,8 @@ export function checkOrdinaryWall(w: WallInput): OrdinaryWallReport {
     if (demand.VuOut !== undefined) checks.push(checkOutOfPlaneShear(w, demand));
     return { demand, checks };
   });
-  const status = worstStatus([...general, ...perDemand.flatMap((d) => d.checks)]);
+  const all = [...general, ...perDemand.flatMap((d) => d.checks)];
+  if (unitsOf(w) === "si") stampEdition(all, "ACI 318M-19");
+  const status = worstStatus(all);
   return { general, perDemand, status };
 }

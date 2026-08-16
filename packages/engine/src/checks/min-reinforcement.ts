@@ -25,7 +25,7 @@ import { BARS, fcInput, lambdaInput } from "../materials";
 import type { BarSize } from "../materials";
 import { aci, checkResult, constant, derive, input } from "../trace";
 import type { CheckResult, Traced } from "../trace";
-import { fmtTex, unitScheme } from "../units";
+import { fmtTex, ksiToMPa, unitScheme } from "../units";
 import type { UnitScheme } from "../units";
 import { Acv, hInput, hwOverLw, schemeOf } from "../wall";
 import type { Demands, DistributedLayer, WallInput } from "../wall";
@@ -221,9 +221,10 @@ interface TableRow {
  *
  * The ρ values themselves are dimensionless and ACI 318M-19 Table 11.6.1 prints
  * them unchanged; only the row labels differ — the bar-size split is No. 16
- * metric (≡ No. 5) and the strength split is f_y ≥ 420 MPa (≡ 60,000 psi). The
- * comparison is made on the canonical ksi either way; only the note is rendered
- * in the units of the edition in force.
+ * metric (≡ No. 5) and the strength split is f_y ≥ 420 MPa (≈ 60,916 psi, not
+ * an exact conversion). The comparison is made against the split printed in the
+ * edition in force: Grade 60 is 413.7 MPa, below the metric split, so the same
+ * bars land in the stricter row when the wall is evaluated in SI.
  */
 function tableRow(barSize: BarSize, fyKsi: number, U: UnitScheme): TableRow {
   const sizeSplit = U.si ? "No. 16 metric" : "No. 5";
@@ -237,7 +238,8 @@ function tableRow(barSize: BarSize, fyKsi: number, U: UnitScheme): TableRow {
       note: `Table 11.6.1 row: deformed bars larger than ${sizeSplit} (${barLabel}), any f_y`,
     };
   }
-  if (fyKsi >= 60) {
+  const relaxed = U.si ? ksiToMPa(fyKsi) >= 420 : fyKsi >= 60;
+  if (relaxed) {
     return {
       rhoL: 0.0012,
       rhoT: 0.002,

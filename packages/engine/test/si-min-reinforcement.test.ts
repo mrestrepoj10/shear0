@@ -26,7 +26,7 @@ import {
   concreteShearNodes,
   rhoProvidedNode,
 } from "../src/checks/min-reinforcement";
-import { GRADE60, concrete } from "../src/materials";
+import { GRADE420, GRADE60, concrete } from "../src/materials";
 import type { RebarGrade } from "../src/materials";
 import { flattenTrace, validateTrace } from "../src/trace";
 import type { CheckResult, Traced } from "../src/trace";
@@ -211,13 +211,22 @@ describe("checkMinReinforcement in SI — low-shear (Table 11.6.1) branch", () =
     expect(() => validateTrace(allNodes(check))).not.toThrow();
   });
 
-  it("keeps the ρ values of Table 11.6.1 unchanged but labels the row 420 MPa", () => {
-    expect(node(check, "minreinf.rho_l_req").value).toBe(0.0012);
-    expect(node(check, "minreinf.rho_t_req").value).toBe(0.002);
-    expect(node(check, "minreinf.rho_l_req").note).toContain("420 MPa");
+  it("puts Grade 60 below the 420 MPa split — stricter row than in-lb", () => {
+    // Grade 60 = 413.685 MPa < 420 MPa: the metric split is not an exact
+    // conversion of 60,000 psi, so the same bars land in the 0.0015/0.0025 row.
+    expect(node(check, "minreinf.rho_l_req").value).toBe(0.0015);
+    expect(node(check, "minreinf.rho_t_req").value).toBe(0.0025);
+    expect(node(check, "minreinf.rho_l_req").note).toMatch(/f_y < 420 MPa/);
     expect(node(check, "minreinf.rho_l_req").note).toContain("No. 16 metric");
     expect(node(check, "minreinf.rho_l_req").note).not.toContain("60,000 psi");
     expect(check.status).toBe("ok");
+  });
+
+  it("keeps the ρ values of Table 11.6.1 unchanged for Grade 420", () => {
+    const c = checkMinReinforcement({ ...example1si, grade: GRADE420 }, lowShear);
+    expect(node(c, "minreinf.rho_l_req").value).toBe(0.0012);
+    expect(node(c, "minreinf.rho_t_req").value).toBe(0.002);
+    expect(node(c, "minreinf.rho_l_req").note).toMatch(/f_y ≥ 420 MPa/);
   });
 
   it("selects the 0.0015/0.0025 row for bars larger than No. 16 metric", () => {
@@ -270,7 +279,8 @@ describe("checkMinReinforcement in SI — threshold boundary", () => {
       Vu: thresholdKip,
     });
     expect(node(c, "minreinf.trigger").value).toBe(false);
-    expect(node(c, "minreinf.rho_l_req").value).toBe(0.0012);
+    // Grade 60 = 413.685 MPa < 420 MPa → strict row in SI
+    expect(node(c, "minreinf.rho_l_req").value).toBe(0.0015);
   });
 
   it("takes the 11.6.2 path just above the threshold", () => {

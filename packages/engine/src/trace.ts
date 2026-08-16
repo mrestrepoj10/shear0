@@ -2,7 +2,7 @@ import type { Unit } from "./units";
 import { fmt } from "./units";
 
 export interface CodeRef {
-  standard: "ACI 318-19";
+  standard: "ACI 318-19" | "ACI 318M-19";
   section: string;
   eq?: string;
 }
@@ -38,6 +38,30 @@ export function aci(section: string, eq?: string): CodeRef {
   return eq === undefined
     ? { standard: "ACI 318-19", section }
     : { standard: "ACI 318-19", section, eq };
+}
+
+/**
+ * Rewrite every CodeRef in a finished report to the edition actually in force.
+ * Checks build refs through aci(), which has no unit-system context; section
+ * numbering is identical across editions, so only the standard name changes.
+ * Mutates in place — nodes can be shared between checks, and re-stamping the
+ * same standard is idempotent.
+ */
+export function stampEdition(checks: CheckResult[], standard: CodeRef["standard"]): void {
+  const seen = new Set<Traced<any>>();
+  const walk = (node: Traced<any>): void => {
+    if (seen.has(node)) return;
+    seen.add(node);
+    if (node.ref) node.ref.standard = standard;
+    for (const input of node.inputs) walk(input);
+  };
+  for (const c of checks) {
+    c.ref.standard = standard;
+    for (const node of c.trace) walk(node);
+    if (c.demand) walk(c.demand);
+    if (c.capacity) walk(c.capacity);
+    if (c.utilization) walk(c.utilization);
+  }
 }
 
 // Provenance is tracked out-of-band so that Traced stays a plain serializable

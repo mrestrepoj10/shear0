@@ -164,3 +164,23 @@ describe.each(cases)("$name", ({ inLb, siRep }) => {
     }
   });
 });
+
+describe("edition stamping on CodeRefs", () => {
+  it("stamps every ref ACI 318M-19 in SI mode", () => {
+    for (const check of cases.flatMap((c) => allChecks(c.siRep))) {
+      expect(check.ref.standard).toBe("ACI 318M-19");
+      for (const n of everyNode(check)) {
+        if (n.ref) expect(n.ref.standard, `${check.id}/${n.id}`).toBe("ACI 318M-19");
+      }
+    }
+  });
+
+  it("keeps ACI 318-19 on every ref in in-lb mode", () => {
+    for (const check of cases.flatMap((c) => allChecks(c.inLb))) {
+      expect(check.ref.standard).toBe("ACI 318-19");
+      for (const n of everyNode(check)) {
+        if (n.ref) expect(n.ref.standard, `${check.id}/${n.id}`).toBe("ACI 318-19");
+      }
+    }
+  });
+});
